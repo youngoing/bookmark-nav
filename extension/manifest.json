@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Loomark Save",
+  "version": "0.1.0",
+  "description": "Save the current page to your Loomark workspace",
+  "permissions": ["activeTab", "storage"],
+  "action": { "default_popup": "popup.html" }
+}

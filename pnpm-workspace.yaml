@@ -1,0 +1,10 @@
+packages:
+  - "frontend"
+  - "backend"
+  - "extension"
+  - "packages/*"
+allowBuilds:
+  esbuild: true
+  sharp: true
+minimumReleaseAgeExclude:
+  - jose@6.2.9

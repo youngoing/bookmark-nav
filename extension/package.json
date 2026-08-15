@@ -1,0 +1,7 @@
+{
+  "name": "@loomark/extension",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": { "build": "node build.mjs" },
+  "dependencies": { "@loomark/shared": "workspace:*" }
+}
