@@ -1,4 +1,15 @@
-export const backendUrl = process.env.BACKEND_URL || "http://localhost:4000";
+const LOCAL_BACKEND_URL = "http://localhost:4000";
+const PRODUCTION_BACKEND_URL = "https://youngoong.cn";
+
+export function getBackendUrl(request: Request): string {
+  const configuredUrl = process.env.BACKEND_URL?.trim();
+  if (configuredUrl) return configuredUrl.replace(/\/+$/, "");
+
+  const { hostname } = new URL(request.url);
+  return hostname === "localhost" || hostname === "127.0.0.1"
+    ? LOCAL_BACKEND_URL
+    : PRODUCTION_BACKEND_URL;
+}
 
 export function backendAuthHeaders(request: Request): Headers {
   const headers = new Headers();

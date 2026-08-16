@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { loginResponse } from "@loomark/shared";
-import { backendUrl } from "../../../../lib/backend";
+import { getBackendUrl } from "../../../../lib/backend";
 
 export async function POST(request: Request): Promise<Response> {
+  const backendUrl = getBackendUrl(request);
   const upstream = await fetch(`${backendUrl}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: await request.text() });
   const parsed = loginResponse.safeParse(await upstream.json());
   if (!parsed.success || !upstream.ok) return NextResponse.json({ error: "邮箱或密码不正确" }, { status: upstream.status });

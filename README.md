@@ -42,6 +42,8 @@ pnpm dev:frontend
 
 打开 http://localhost:3000。生产构建使用 `pnpm build && pnpm start`。
 
+未配置 `BACKEND_URL` 时，前端 API 代理会根据访问地址选择后端：`localhost` 和 `127.0.0.1` 使用 `http://localhost:4000`，其他域名使用 `https://youngoong.cn/api`。容器部署等场景可继续通过 `BACKEND_URL` 显式覆盖后端地址。
+
 ## 浏览器插件接口
 
 ```bash
