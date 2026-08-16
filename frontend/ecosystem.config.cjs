@@ -1,3 +1,9 @@
+const { readFileSync } = require("node:fs");
+const { join } = require("node:path");
+const { parseEnv } = require("node:util");
+
+const runtimeEnv = parseEnv(readFileSync(join(__dirname, ".env"), "utf8"));
+
 module.exports = {
   apps: [
     {
@@ -9,12 +15,14 @@ module.exports = {
         PORT: 3000,
         HOSTNAME: "0.0.0.0",
         BACKEND_URL: "http://127.0.0.1:4001",
+        ...runtimeEnv,
       },
       env_production: {
         NODE_ENV: "production",
         PORT: 3000,
         HOSTNAME: "0.0.0.0",
         BACKEND_URL: "http://127.0.0.1:4001",
+        ...runtimeEnv,
       },
       instances: 1,
       exec_mode: "fork",
