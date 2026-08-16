@@ -62,6 +62,10 @@ describe("书签工作台用户流程", () => {
     render(createElement(ThemeProvider, { children: createElement(Home) }));
 
     expect(await screen.findByRole("heading", { name: "登录" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "账号密码登录" }));
+    await user.click(screen.getByRole("button", { name: "Demo 尝试" }));
+    expect((screen.getByLabelText("邮箱") as HTMLInputElement).value).toBe("test@bookmark-nav.local");
+    expect((screen.getByLabelText("密码") as HTMLInputElement).value).toBe("Test123456!");
     await user.click(screen.getByRole("button", { name: "登录" }));
     expect(await screen.findByText("Alpha 书签")).toBeTruthy();
     expect(screen.getByText("测试账号")).toBeTruthy();

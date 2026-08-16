@@ -261,10 +261,17 @@ function ThemeSwitcher({ mode, setMode }: { mode: ThemeMode; setMode: (mode: The
 }
 
 function LoginScreen({ onLoggedIn }: { onLoggedIn: (user: UserResponse) => void }) {
-  const [email, setEmail] = useState("test@bookmark-nav.local");
-  const [password, setPassword] = useState("Test123456!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [showPasswordLogin, setShowPasswordLogin] = useState(false);
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("google_error");
+    if (code === "ACCOUNT_NOT_FOUND") setError("该 Google 邮箱尚未开通 Loomark 账号");
+    else if (code === "cancelled") setError("已取消 Google 登录");
+    else if (code) setError("Google 登录失败，请稍后重试");
+  }, []);
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     setSubmitting(true);
@@ -278,7 +285,12 @@ function LoginScreen({ onLoggedIn }: { onLoggedIn: (user: UserResponse) => void 
     onLoggedIn(parsed.data.user);
     setSubmitting(false);
   }
-  return <main className="auth-shell"><form className="auth-panel" onSubmit={(event) => void submit(event)}><div className="auth-brand"><span className="brand-mark"><Command size={18} strokeWidth={2.8} /></span><strong>Loomark</strong></div><div><p className="eyebrow">个人工作区</p><h1>登录</h1><p>使用已初始化的账号进入书签工作台。</p></div><label>邮箱<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label><label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" minLength={8} required /></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary-button auth-submit" disabled={submitting}><LogIn size={16} />{submitting ? "登录中..." : "登录"}</button><small>测试账号已预填，可直接登录。</small></form></main>;
+  function fillDemoCredentials(): void {
+    setEmail("test@bookmark-nav.local");
+    setPassword("Test123456!");
+    setError("");
+  }
+  return <main className="auth-shell"><div className="auth-panel"><div className="auth-brand"><span className="brand-mark"><Command size={18} strokeWidth={2.8} /></span><strong>Loomark</strong></div><div><p className="eyebrow">个人工作区</p><h1>登录</h1><p>使用 Google 快速注册或登录你的书签工作台。</p></div><section className="auth-method"><span className="auth-method-title">Google 登录</span><a className="secondary-button auth-submit" href="/api/auth/google"><LogIn size={16} />使用 Google 登录</a><small>首次使用会自动创建账号。</small></section><section className="auth-method password-method"><button type="button" className="password-login-toggle" onClick={() => setShowPasswordLogin((current) => !current)}>{showPasswordLogin ? "收起账号密码登录" : "账号密码登录"}<ChevronDown size={15} className={showPasswordLogin ? "rotated" : ""} /></button>{showPasswordLogin && <form className="password-login-form" onSubmit={(event) => void submit(event)}><label>邮箱<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label><label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" minLength={8} required /></label><button type="button" className="demo-link" onClick={fillDemoCredentials}>Demo 尝试</button>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary-button auth-submit" disabled={submitting}>{submitting ? "登录中..." : "登录"}</button></form>}</section></div></main>;
 }
 
 function AccountModal({ user, onClose, onSaved }: { user: UserResponse; onClose: () => void; onSaved: (user: UserResponse) => void }) {

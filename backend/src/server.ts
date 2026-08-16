@@ -2,7 +2,7 @@ import "./config";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { accountUpdateInput, bookmarkCreateInput, bookmarkPageQuery, bookmarkPatchInput, folderCreateInput, folderUpdateInput, fromPromise, jsonValueSchema, loginInput, tagCreateInput, tagUpdateInput, type JsonValue } from "@loomark/shared";
-import { authenticateUser, createSession, getSessionUser, isValidApiToken, updateAccount, verifySession } from "./auth";
+import { authenticateGoogle, authenticateUser, createSession, getSessionUser, isValidApiToken, updateAccount, verifySession } from "./auth";
 import { config, configSource } from "./config";
 import { closeDatabase } from "./db";
 import { initializeDatabase } from "./database/initialize";
@@ -122,6 +122,22 @@ async function handleRest(request: IncomingMessage, response: ServerResponse, ur
       `bookmark_session=${encodeURIComponent(token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; HttpOnly; Secure; SameSite=Lax`,
     );
     sendJson(response, 200, { user: authenticated.value, token } as JsonValue);
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/auth/google/callback") {
+    const bodyResult = await fromPromise(readBody(request), () => ({ code: "INVALID_JSON", message: "Invalid JSON payload" }));
+    if (!bodyResult.ok || typeof bodyResult.value !== "object" || bodyResult.value === null || Array.isArray(bodyResult.value) || !("code" in bodyResult.value) || typeof bodyResult.value.code !== "string" || !bodyResult.value.code) {
+      sendJson(response, 400, { error: "Google 授权码无效", code: "INVALID_GOOGLE_CODE" });
+      return;
+    }
+    const authenticated = await authenticateGoogle(bodyResult.value.code);
+    if (!authenticated.ok) {
+      const status = authenticated.error.code === "GOOGLE_NOT_CONFIGURED" ? 503 : authenticated.error.code === "ACCOUNT_CREATION_FAILED" ? 500 : 401;
+      sendJson(response, status, { error: authenticated.error.message, code: authenticated.error.code });
+      return;
+    }
+    response.setHeader("set-cookie", `bookmark_session=${encodeURIComponent(authenticated.value.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; HttpOnly; Secure; SameSite=Lax`);
+    sendJson(response, 200, { user: authenticated.value.user, token: authenticated.value.token } as JsonValue);
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/auth/session") {

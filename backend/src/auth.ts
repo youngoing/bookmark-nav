@@ -1,5 +1,5 @@
 import { jwtVerify, SignJWT } from "jose";
-import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import { failure, fromPromise, success, type AccountUpdateInput, type Result, type UserResponse } from "@loomark/shared";
 import { z } from "zod";
 import type { WithId } from "mongodb";
@@ -11,6 +11,7 @@ const sessionPayload = z.object({ userId: z.string(), email: z.string().email() 
 
 export type SessionError = { code: "SESSION_INVALID"; message: string };
 export type AuthenticationError = { code: "INVALID_CREDENTIALS" | "ACCOUNT_NOT_FOUND" | "PASSWORD_REQUIRED" | "PASSWORD_HASH_FAILED"; message: string };
+export type GoogleAuthenticationError = { code: "GOOGLE_NOT_CONFIGURED" | "GOOGLE_TOKEN_EXCHANGE_FAILED" | "GOOGLE_PROFILE_INVALID" | "ACCOUNT_CREATION_FAILED"; message: string };
 
 export function createSession(user: UserResponse): Promise<string> {
   return new SignJWT({ userId: user.id, email: user.email })
@@ -72,6 +73,73 @@ export async function authenticateUser(email: string, password: string): Promise
   const parsed = parseUser(document);
   if (!parsed.ok || !(await verifyPassword(password, parsed.value.passwordHash))) return failure({ code: "INVALID_CREDENTIALS", message: "邮箱或密码不正确" });
   return success(publicUser(parsed.value));
+}
+
+type GoogleTokenResponse = { access_token?: unknown };
+type GoogleProfile = { email?: unknown; email_verified?: unknown; name?: unknown };
+
+export async function authenticateGoogle(code: string): Promise<Result<{ user: UserResponse; token: string }, GoogleAuthenticationError>> {
+  if (!config.GOOGLE_CLIENT_ID || !config.GOOGLE_CLIENT_SECRET) {
+    return failure({ code: "GOOGLE_NOT_CONFIGURED", message: "Google 登录尚未配置" });
+  }
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: config.GOOGLE_CLIENT_ID,
+      client_secret: config.GOOGLE_CLIENT_SECRET,
+      redirect_uri: config.GOOGLE_REDIRECT_URI,
+      grant_type: "authorization_code",
+    }),
+    signal: AbortSignal.timeout(10000),
+  }).catch(() => null);
+  if (!tokenResponse?.ok) return failure({ code: "GOOGLE_TOKEN_EXCHANGE_FAILED", message: "无法完成 Google 登录" });
+  const tokenBody = await tokenResponse.json().catch(() => null) as GoogleTokenResponse | null;
+  if (!tokenBody || typeof tokenBody.access_token !== "string" || !tokenBody.access_token) {
+    return failure({ code: "GOOGLE_TOKEN_EXCHANGE_FAILED", message: "Google 返回的授权无效" });
+  }
+  const profileResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+    headers: { authorization: `Bearer ${tokenBody.access_token}` },
+    signal: AbortSignal.timeout(10000),
+  }).catch(() => null);
+  if (!profileResponse?.ok) return failure({ code: "GOOGLE_PROFILE_INVALID", message: "无法读取 Google 账号信息" });
+  const profile = await profileResponse.json().catch(() => null) as GoogleProfile | null;
+  const email = typeof profile?.email === "string" ? profile.email.toLowerCase() : "";
+  if (!email || profile?.email_verified !== true) return failure({ code: "GOOGLE_PROFILE_INVALID", message: "Google 邮箱未通过验证" });
+  const users = await getUsersCollection();
+  const document = await users.findOne({ email });
+  let user: UserDocument;
+  if (document) {
+    const parsed = parseUser(document);
+    if (!parsed.ok) return failure({ code: "ACCOUNT_CREATION_FAILED", message: "账号数据无效" });
+    user = parsed.value;
+  } else {
+    const now = new Date().toISOString();
+    const name = typeof profile.name === "string" && profile.name.trim() ? profile.name.trim().slice(0, 60) : email.split("@")[0];
+    const newUser: UserDocument = {
+      id: randomUUID(),
+      email,
+      name,
+      // Google accounts authenticate through OAuth, never through this password hash.
+      passwordHash: `google:${randomBytes(32).toString("hex")}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    try {
+      await users.insertOne(newUser);
+      user = newUser;
+    } catch {
+      // A concurrent first login may have created the same email already.
+      const existing = await users.findOne({ email });
+      if (!existing) return failure({ code: "ACCOUNT_CREATION_FAILED", message: "无法创建 Loomark 账号" });
+      const parsed = parseUser(existing);
+      if (!parsed.ok) return failure({ code: "ACCOUNT_CREATION_FAILED", message: "账号数据无效" });
+      user = parsed.value;
+    }
+  }
+  const publicAccount = publicUser(user);
+  return success({ user: publicAccount, token: await createSession(publicAccount) });
 }
 
 export async function getSessionUser(token?: string): Promise<Result<UserResponse, SessionError | AuthenticationError>> {
