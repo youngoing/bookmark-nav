@@ -46,6 +46,7 @@ import {
   createSite,
   createTag,
   getDashboard,
+  listTagOptions,
   listBookmarks,
   listBookmarksPage,
   listDiscover,
@@ -661,6 +662,10 @@ async function handleRest(
     return;
   }
 
+  if (request.method === "GET" && url.pathname === "/api/v1/tags") {
+    sendJson(response, 200, (await listTagOptions(user.id)) as JsonValue);
+    return;
+  }
   if (request.method === "POST" && url.pathname === "/api/v1/tags") {
     const bodyResult = await fromPromise(readBody(request), () => ({
       code: "INVALID_JSON",

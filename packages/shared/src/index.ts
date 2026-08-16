@@ -113,9 +113,20 @@ export const tagResponse = tagCreateInput.extend({
   createdAt: z.string(),
   updatedAt: z.string(),
 });
+export const tagOptionResponse = tagCreateInput
+  .pick({
+    name: true,
+    color: true,
+    parentId: true,
+  })
+  .extend({
+    id: z.string(),
+  });
+export const tagOptionListResponse = z.array(tagOptionResponse);
 export type TagCreateInput = z.infer<typeof tagCreateInput>;
 export type TagUpdateInput = z.infer<typeof tagUpdateInput>;
 export type Tag = z.infer<typeof tagResponse>;
+export type TagOption = z.infer<typeof tagOptionResponse>;
 
 export const userResponse = z.object({
   id: z.string(),

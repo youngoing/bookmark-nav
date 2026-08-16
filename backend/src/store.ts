@@ -21,6 +21,7 @@ import {
   type SharedCollectionPublishInput,
   type Tag,
   type TagCreateInput,
+  type TagOption,
   type TagUpdateInput,
 } from "@loomark/shared";
 import {
@@ -290,6 +291,26 @@ export async function getDashboard(ownerId: string): Promise<DashboardData> {
     sites,
     totalClicks: bookmarks.reduce((sum, item) => sum + item.clicks, 0),
   };
+}
+
+export async function listTagOptions(ownerId: string): Promise<TagOption[]> {
+  const documents = await (await getTagsCollection())
+    .find({ ownerId })
+    .sort({ parentId: 1, createdAt: 1 })
+    .project<Pick<TagDocument, "id" | "name" | "color" | "parentId">>({
+      _id: 0,
+      id: 1,
+      name: 1,
+      color: 1,
+      parentId: 1,
+    })
+    .toArray();
+  return documents.map((tag) => ({
+    id: tag.id,
+    name: tag.name,
+    color: tag.color,
+    parentId: tag.parentId,
+  }));
 }
 
 export async function createFolder(

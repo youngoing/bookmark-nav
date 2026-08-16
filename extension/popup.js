@@ -3,6 +3,8 @@ const setup = byId("setup");
 const capture = byId("capture");
 const settings = byId("settings");
 let activeTab = null;
+let tags = [];
+const selectedTagIds = new Set();
 
 function normalizeEndpoint(value) {
   const url = new URL(value);
@@ -43,6 +45,92 @@ async function request(endpoint, apiKey, path, init = {}) {
   return response;
 }
 
+async function loadTags(endpoint, apiKey) {
+  const response = await request(endpoint, apiKey, "/api/v1/tags");
+  const body = await response.json();
+  if (!Array.isArray(body)) throw new Error("标签数据无效");
+  tags = body.filter((tag) =>
+    tag &&
+    typeof tag.id === "string" &&
+    typeof tag.name === "string" &&
+    typeof tag.color === "string" &&
+    (tag.parentId === null || typeof tag.parentId === "string")
+  );
+  selectedTagIds.clear();
+  renderTags();
+}
+
+function orderedTags() {
+  const children = new Map();
+  for (const tag of tags) {
+    const key = tag.parentId || "";
+    if (!children.has(key)) children.set(key, []);
+    children.get(key).push(tag);
+  }
+  const result = [];
+  const visited = new Set();
+  function append(parentId, depth) {
+    for (const tag of children.get(parentId) || []) {
+      if (visited.has(tag.id)) continue;
+      visited.add(tag.id);
+      result.push({ tag, depth });
+      append(tag.id, depth + 1);
+    }
+  }
+  append("", 0);
+  for (const tag of tags) {
+    if (!visited.has(tag.id)) result.push({ tag, depth: 0 });
+  }
+  return result;
+}
+
+function renderTags() {
+  const list = byId("tagList");
+  list.replaceChildren();
+  byId("tagCount").textContent = `${selectedTagIds.size} 个已选`;
+  if (!tags.length) {
+    const message = document.createElement("span");
+    message.className = "tag-message";
+    message.textContent = "工作区还没有标签";
+    list.append(message);
+    return;
+  }
+  for (const { tag, depth } of orderedTags()) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `tag-option${depth ? " child" : ""}${selectedTagIds.has(tag.id) ? " selected" : ""}`;
+    button.style.setProperty("--tag-color", tag.color);
+    button.setAttribute("aria-pressed", String(selectedTagIds.has(tag.id)));
+    const dot = document.createElement("span");
+    dot.className = "tag-dot";
+    const name = document.createElement("span");
+    name.textContent = `${depth ? "└ " : ""}${tag.name}`;
+    button.append(dot, name);
+    button.addEventListener("click", () => {
+      if (selectedTagIds.has(tag.id)) selectedTagIds.delete(tag.id);
+      else selectedTagIds.add(tag.id);
+      renderTags();
+    });
+    list.append(button);
+  }
+}
+
+async function readPageDescription(tab) {
+  if (!tab?.id || !/^https?:/.test(tab.url || "")) return "";
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () =>
+        document.querySelector('meta[name="description"]')?.getAttribute("content") ||
+        document.querySelector('meta[property="og:description"]')?.getAttribute("content") ||
+        "",
+    });
+    return typeof result?.result === "string" ? result.result.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
 async function loadActiveTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   activeTab = tab || null;
@@ -51,6 +139,8 @@ async function loadActiveTab() {
   byId("pageTitle").textContent = title;
   byId("pageUrl").textContent = url;
   byId("title").value = title;
+  byId("url").value = url;
+  byId("description").value = await readPageDescription(tab);
   byId("favicon").src = tab?.favIconUrl || `https://www.google.com/s2/favicons?domain_url=${encodeURIComponent(url)}&sz=64`;
 }
 
@@ -64,6 +154,12 @@ async function restore() {
   }
   byId("apiKey").value = stored.apiKey;
   showCapture(stored.endpoint);
+  try {
+    await loadTags(stored.endpoint, stored.apiKey);
+    setStatus(byId("captureStatus"), "");
+  } catch (error) {
+    setStatus(byId("captureStatus"), error instanceof Error ? error.message : "标签加载失败", true);
+  }
 }
 
 byId("connect").addEventListener("click", async () => {
@@ -74,7 +170,7 @@ byId("connect").addEventListener("click", async () => {
     const endpoint = normalizeEndpoint(byId("endpoint").value.trim());
     const apiKey = byId("apiKey").value.trim();
     if (!apiKey) throw new Error("请输入 API Key");
-    await request(endpoint, apiKey, "/api/v1/bookmarks/page?page=1&pageSize=1&sort=recent");
+    await loadTags(endpoint, apiKey);
     await chrome.storage.local.set({ endpoint, apiKey });
     showCapture(endpoint);
     setStatus(byId("captureStatus"), "");
@@ -90,16 +186,18 @@ byId("save").addEventListener("click", async () => {
   button.disabled = true;
   setStatus(byId("captureStatus"), "正在保存...");
   try {
-    if (!activeTab?.url || !/^https?:/.test(activeTab.url)) throw new Error("当前页面不能保存");
+    const url = byId("url").value.trim();
+    if (!/^https?:\/\//i.test(url)) throw new Error("请输入有效的 HTTP 或 HTTPS 链接");
     const stored = await chrome.storage.local.get(["endpoint", "apiKey"]);
     if (!stored.endpoint || !stored.apiKey) throw new Error("请先配置 API Key");
     await request(stored.endpoint, stored.apiKey, "/api/v1/bookmarks", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        url: activeTab.url,
-        title: byId("title").value.trim() || activeTab.title || activeTab.url,
-        tags: [],
+        url,
+        title: byId("title").value.trim() || activeTab?.title || url,
+        description: byId("description").value.trim(),
+        tags: [...selectedTagIds],
       }),
     });
     setStatus(byId("captureStatus"), "已保存到 bookmark-nav");
