@@ -7,9 +7,11 @@ module.exports = {
       env_file: "./.env",
       env: {
         NODE_ENV: "production",
+        GOOGLE_PROXY_URL: "http://127.0.0.1:7890",
       },
       env_production: {
         NODE_ENV: "production",
+        GOOGLE_PROXY_URL: "http://127.0.0.1:7890",
       },
       instances: 1,
       exec_mode: "fork",

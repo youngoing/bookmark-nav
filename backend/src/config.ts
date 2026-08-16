@@ -21,6 +21,7 @@ const environment = z.object({
   GOOGLE_CLIENT_ID: z.string().default(""),
   GOOGLE_CLIENT_SECRET: z.string().default(""),
   GOOGLE_REDIRECT_URI: z.string().url().default("http://localhost:3000/auth/google/callback"),
+  GOOGLE_PROXY_URL: z.string().url().optional(),
 });
 
 const parsed = environment.safeParse(process.env);

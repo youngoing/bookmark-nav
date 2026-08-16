@@ -109,6 +109,12 @@ stage_artifacts() {
     cp -R "$FRONTEND_DIR/public/." "$out_dir/frontend/public/"
   fi
 
+  if [ ! -f "$out_dir/frontend/server.js" ]; then
+    echo "ERROR: Standalone entrypoint not found at $out_dir/frontend/server.js." >&2
+    echo "Check frontend/next.config.ts outputFileTracingRoot." >&2
+    return 1
+  fi
+
   cp "$FRONTEND_DIR/ecosystem.config.cjs" "$out_dir/ecosystem.config.cjs"
 }
 
@@ -225,7 +231,7 @@ deploy_remote() {
   trap cleanup_remote EXIT
 
   tmp_dir=$(mktemp -d /tmp/bookmark-nav-frontend-deploy-XXXXXX)
-  archive=$(mktemp /tmp/bookmark-nav-frontend-XXXXXX.tar.gz)
+  archive=$(mktemp /tmp/bookmark-nav-frontend-archive-XXXXXX)
 
   echo "==> Staging artifacts..."
   stage_artifacts "$tmp_dir"

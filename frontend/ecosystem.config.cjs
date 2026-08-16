@@ -3,7 +3,7 @@ const productionEnv = {
   PORT: 3000,
   HOSTNAME: "0.0.0.0",
   APP_URL: "https://youngoing.cn",
-  BACKEND_URL: "https://youngoing.cn:4001",
+  BACKEND_URL: "http://127.0.0.1:4001",
   GOOGLE_CLIENT_ID: "925220771479-7kjk6hak8dhrji3as6ami8uprk8uv16n.apps.googleusercontent.com",
   GOOGLE_REDIRECT_URI: "https://youngoing.cn/auth/google/callback",
 };

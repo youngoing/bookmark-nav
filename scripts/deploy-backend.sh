@@ -216,7 +216,7 @@ deploy_remote() {
   trap cleanup_remote EXIT
 
   tmp_dir=$(mktemp -d /tmp/bookmark-nav-backend-deploy-XXXXXX)
-  archive=$(mktemp /tmp/bookmark-nav-backend-XXXXXX.tar.gz)
+  archive=$(mktemp /tmp/bookmark-nav-backend-archive-XXXXXX)
 
   echo "==> Staging artifacts..."
   stage_artifacts "$tmp_dir"

@@ -17,7 +17,7 @@ await build({
   outfile: resolve(outDir, "server.js"),
   // Bundle the workspace package @loomark/shared, but keep npm dependencies
   // external so native modules (e.g. mongodb) are loaded from node_modules.
-  external: ["mongodb", "@trpc/server", "jose", "zod", "dotenv"],
+  external: ["mongodb", "@trpc/server", "jose", "zod", "dotenv", "undici"],
   minify: true,
   sourcemap: false,
 });
