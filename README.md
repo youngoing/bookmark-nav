@@ -63,7 +63,7 @@ docker compose up -d --build
 
 MongoDB 已包含在 Compose 中，独立 backend 负责 MongoDB 连接、书签数据访问和鉴权。集合定义位于 `backend/src/database/collections`，backend 启动时创建并校验固定的 `bookmarks`、`folders`、`tags` 和 `users` collection、字段 validator 和索引；运行期间不会按请求动态创建 collection。数据库连接通过统一模块设置 `MONGODB_APP_NAME`（默认 `bookmark-nav`），便于在 MongoDB 监控中识别应用。
 
-Google 登录使用 OAuth 2.0 授权码流程：前端只跳转到 Google，不接触密钥；回调地址为 `/api/auth/google/callback`，backend 使用 `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` 换取并验证用户信息，按邮箱匹配已有用户，或在首次登录时自动创建用户，最后签发本项目自己的 HttpOnly Cookie。
+Google 登录使用 OAuth 2.0 授权码流程：前端只跳转到 Google，不接触密钥；回调地址为 `/auth/google/callback`，backend 使用 `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` 换取并验证用户信息，按邮箱匹配已有用户，或在首次登录时自动创建用户，最后签发本项目自己的 HttpOnly Cookie。
 
 ## 接口选择
 

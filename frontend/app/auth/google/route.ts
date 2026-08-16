@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 
 function redirectUri(request: Request): string {
-  return process.env.GOOGLE_REDIRECT_URI?.trim() || new URL("/api/auth/google/callback", request.url).toString();
+  return process.env.GOOGLE_REDIRECT_URI?.trim() || new URL("/auth/google/callback", request.url).toString();
 }
 
 export async function GET(request: Request): Promise<Response> {

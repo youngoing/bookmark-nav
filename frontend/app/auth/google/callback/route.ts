@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { loginResponse } from "@loomark/shared";
-import { getBackendUrl } from "../../../../../lib/backend";
+import { getBackendUrl } from "../../../../lib/backend";
 
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);

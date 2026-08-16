@@ -20,7 +20,7 @@ const environment = z.object({
   API_TOKEN: z.string().min(1).default("demo-api-token"),
   GOOGLE_CLIENT_ID: z.string().default(""),
   GOOGLE_CLIENT_SECRET: z.string().default(""),
-  GOOGLE_REDIRECT_URI: z.string().url().default("http://localhost:3000/api/auth/google/callback"),
+  GOOGLE_REDIRECT_URI: z.string().url().default("http://localhost:3000/auth/google/callback"),
 });
 
 const parsed = environment.safeParse(process.env);
