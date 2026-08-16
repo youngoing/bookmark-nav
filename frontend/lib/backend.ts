@@ -1,4 +1,4 @@
-const LOCAL_BACKEND_URL = "http://localhost:4000";
+const LOCAL_BACKEND_URL = "http://localhost:4001";
 const PRODUCTION_BACKEND_URL = "http://127.0.0.1:4001";
 
 export function getBackendUrl(request: Request): string {

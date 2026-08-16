@@ -62,13 +62,19 @@ describe("书签工作台用户流程", () => {
     render(createElement(ThemeProvider, { children: createElement(Home) }));
 
     expect(await screen.findByRole("heading", { name: "登录" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "账号密码登录" }));
+    expect(screen.getByRole("tab", { name: "Google 登录" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("link", { name: "使用 Google 登录" })).toBeTruthy();
+    const passwordTab = screen.getByRole("tab", { name: "账号密码登录" });
+    await user.click(passwordTab);
+    expect(passwordTab.getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("link", { name: "使用 Google 登录" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Demo 尝试" }));
     expect((screen.getByLabelText("邮箱") as HTMLInputElement).value).toBe("test@bookmark-nav.local");
     expect((screen.getByLabelText("密码") as HTMLInputElement).value).toBe("Test123456!");
     await user.click(screen.getByRole("button", { name: "登录" }));
     expect(await screen.findByText("Alpha 书签")).toBeTruthy();
-    expect(screen.getByText("测试账号")).toBeTruthy();
+    expect(screen.getByText("bookmark-nav")).toBeTruthy();
+    expect(screen.queryByText("测试账号")).toBeNull();
   });
 
   it("用户编辑标签后在导航中看到更新后的名称", async () => {

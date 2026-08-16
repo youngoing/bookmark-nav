@@ -21,5 +21,5 @@ export default function DemoPage() {
     return () => { active = false; };
   }, []);
 
-  return <main className="auth-shell"><div className="auth-panel demo-page"><p className="eyebrow">Loomark Demo</p><h1>{error ? "Demo 暂不可用" : "正在进入 Demo..."}</h1>{error && <p className="form-error" role="alert">{error}</p>}<a className="secondary-button auth-submit" href="/">返回登录</a></div></main>;
+  return <main className="auth-shell"><div className="auth-panel demo-page"><p className="eyebrow">bookmark-nav Demo</p><h1>{error ? "Demo 暂不可用" : "正在进入 Demo..."}</h1>{error && <p className="form-error" role="alert">{error}</p>}<a className="secondary-button auth-submit" href="/">返回登录</a></div></main>;
 }

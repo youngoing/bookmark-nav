@@ -12,7 +12,7 @@ describe("getBackendUrl", () => {
   it.each(["localhost", "127.0.0.1"])("uses the local backend for %s", (hostname) => {
     delete process.env.BACKEND_URL;
 
-    expect(getBackendUrl(new Request(`http://${hostname}:3000/api/v1/dashboard`))).toBe("http://localhost:4000");
+    expect(getBackendUrl(new Request(`http://${hostname}:3000/api/v1/dashboard`))).toBe("http://localhost:4001");
   });
 
   it("uses the production backend for non-local requests", () => {
