@@ -75,38 +75,75 @@ export async function authenticateUser(email: string, password: string): Promise
   return success(publicUser(parsed.value));
 }
 
-type GoogleTokenResponse = { access_token?: unknown };
+type GoogleTokenResponse = { access_token?: unknown; error?: unknown; error_description?: unknown };
 type GoogleProfile = { email?: unknown; email_verified?: unknown; name?: unknown };
 
 export async function authenticateGoogle(code: string): Promise<Result<{ user: UserResponse; token: string }, GoogleAuthenticationError>> {
   if (!config.GOOGLE_CLIENT_ID || !config.GOOGLE_CLIENT_SECRET) {
     return failure({ code: "GOOGLE_NOT_CONFIGURED", message: "Google 登录尚未配置" });
   }
-  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      code,
-      client_id: config.GOOGLE_CLIENT_ID,
-      client_secret: config.GOOGLE_CLIENT_SECRET,
-      redirect_uri: config.GOOGLE_REDIRECT_URI,
-      grant_type: "authorization_code",
-    }),
-    signal: AbortSignal.timeout(10000),
-  }).catch(() => null);
-  if (!tokenResponse?.ok) return failure({ code: "GOOGLE_TOKEN_EXCHANGE_FAILED", message: "无法完成 Google 登录" });
+  let tokenResponse: Response;
+  try {
+    tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: config.GOOGLE_CLIENT_ID,
+        client_secret: config.GOOGLE_CLIENT_SECRET,
+        redirect_uri: config.GOOGLE_REDIRECT_URI,
+        grant_type: "authorization_code",
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (error) {
+    console.error("[google oauth] token request failed", {
+      reason: error instanceof Error ? error.name : "unknown",
+    });
+    return failure({ code: "GOOGLE_TOKEN_EXCHANGE_FAILED", message: "无法完成 Google 登录" });
+  }
   const tokenBody = await tokenResponse.json().catch(() => null) as GoogleTokenResponse | null;
+  if (!tokenResponse.ok) {
+    console.error("[google oauth] token exchange rejected", {
+      status: tokenResponse.status,
+      googleError: typeof tokenBody?.error === "string" ? tokenBody.error : "unknown",
+      description: typeof tokenBody?.error_description === "string" ? tokenBody.error_description : undefined,
+    });
+    return failure({ code: "GOOGLE_TOKEN_EXCHANGE_FAILED", message: "无法完成 Google 登录" });
+  }
   if (!tokenBody || typeof tokenBody.access_token !== "string" || !tokenBody.access_token) {
+    console.error("[google oauth] token response missing access token", {
+      status: tokenResponse.status,
+    });
     return failure({ code: "GOOGLE_TOKEN_EXCHANGE_FAILED", message: "Google 返回的授权无效" });
   }
-  const profileResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-    headers: { authorization: `Bearer ${tokenBody.access_token}` },
-    signal: AbortSignal.timeout(10000),
-  }).catch(() => null);
-  if (!profileResponse?.ok) return failure({ code: "GOOGLE_PROFILE_INVALID", message: "无法读取 Google 账号信息" });
+  let profileResponse: Response;
+  try {
+    profileResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+      headers: { authorization: `Bearer ${tokenBody.access_token}` },
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (error) {
+    console.error("[google oauth] profile request failed", {
+      reason: error instanceof Error ? error.name : "unknown",
+    });
+    return failure({ code: "GOOGLE_PROFILE_INVALID", message: "无法读取 Google 账号信息" });
+  }
+  if (!profileResponse.ok) {
+    console.error("[google oauth] profile request rejected", {
+      status: profileResponse.status,
+    });
+    return failure({ code: "GOOGLE_PROFILE_INVALID", message: "无法读取 Google 账号信息" });
+  }
   const profile = await profileResponse.json().catch(() => null) as GoogleProfile | null;
   const email = typeof profile?.email === "string" ? profile.email.toLowerCase() : "";
-  if (!email || profile?.email_verified !== true) return failure({ code: "GOOGLE_PROFILE_INVALID", message: "Google 邮箱未通过验证" });
+  if (!email || profile?.email_verified !== true) {
+    console.error("[google oauth] invalid profile payload", {
+      hasEmail: Boolean(email),
+      emailVerified: profile?.email_verified === true,
+    });
+    return failure({ code: "GOOGLE_PROFILE_INVALID", message: "Google 邮箱未通过验证" });
+  }
   const users = await getUsersCollection();
   const document = await users.findOne({ email });
   let user: UserDocument;
