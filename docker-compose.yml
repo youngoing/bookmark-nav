@@ -11,7 +11,7 @@ services:
       API_TOKEN: ${API_TOKEN:-demo-api-token}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://youongoing.cn/auth/google/callback}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://youngoing.cn/auth/google/callback}
       MONGODB_URI: mongodb://mongo:27017
       MONGODB_DB: bookmark_nav
       MONGODB_APP_NAME: bookmark-nav
@@ -28,7 +28,7 @@ services:
     environment:
       BACKEND_URL: http://backend:4000
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://youongoing.cn/auth/google/callback}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://youngoing.cn/auth/google/callback}
     depends_on:
       backend:
         condition: service_started
