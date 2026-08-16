@@ -12,6 +12,9 @@
     "dev:frontend": "pnpm --filter @loomark/frontend dev",
     "dev:backend": "pnpm --filter @loomark/backend dev",
     "build:frontend": "pnpm --filter @loomark/frontend build",
+    "build:backend": "pnpm --filter @loomark/backend build",
+    "deploy:backend": "bash scripts/deploy-backend.sh",
+    "deploy:frontend": "bash scripts/deploy-frontend.sh",
     "typecheck:backend": "pnpm --filter @loomark/backend typecheck",
     "test": "pnpm --filter @loomark/frontend test",
     "test:watch": "pnpm --filter @loomark/frontend test:watch"
@@ -31,6 +34,7 @@
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.3",
     "@types/react-dom": "^19.0.2",
+    "pm2": "^7.0.3",
     "typescript": "^5.7.2"
   }
 }

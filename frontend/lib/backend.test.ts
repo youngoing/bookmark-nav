@@ -18,7 +18,7 @@ describe("getBackendUrl", () => {
   it("uses the production backend for non-local requests", () => {
     delete process.env.BACKEND_URL;
 
-    expect(getBackendUrl(new Request("https://bookmarks.example.com/api/v1/dashboard"))).toBe("https://youngoong.cn");
+    expect(getBackendUrl(new Request("https://bookmarks.example.com/api/v1/dashboard"))).toBe("http://127.0.0.1:4001");
   });
 
   it("prefers an explicitly configured backend URL", () => {

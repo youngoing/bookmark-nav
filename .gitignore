@@ -4,4 +4,6 @@ frontend/.next/
 backend/.env
 frontend/.env.local
 .env
+backend/dist/
+scripts/deploy.env
 *.log

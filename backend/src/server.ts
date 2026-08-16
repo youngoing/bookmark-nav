@@ -21,7 +21,14 @@ function readApiToken(request: IncomingMessage): string | undefined {
 }
 
 function readSessionToken(request: IncomingMessage): string | undefined {
-  return request.headers.cookie?.match(/(?:^|;\s*)bookmark_session=([^;]+)/)?.[1];
+  const cookie = request.headers.cookie;
+  const token = cookie?.match(/(?:^|;\s*)bookmark_session=([^;]+)/)?.[1];
+  console.log("backend session token read", {
+    requestId: typeof request.headers["x-request-id"] === "string" ? request.headers["x-request-id"] : "unassigned",
+    hasCookie: Boolean(cookie),
+    hasToken: Boolean(token),
+  });
+  return token;
 }
 
 async function isAuthorized(request: IncomingMessage): Promise<boolean> {
@@ -109,7 +116,12 @@ async function handleRest(request: IncomingMessage, response: ServerResponse, ur
     if (!parsed.success) { sendJson(response, 400, { error: "请输入有效邮箱和至少 8 位密码", code: "INVALID_LOGIN_INPUT" }); return; }
     const authenticated = await authenticateUser(parsed.data.email, parsed.data.password);
     if (!authenticated.ok) { sendJson(response, 401, { error: authenticated.error.message, code: authenticated.error.code }); return; }
-    sendJson(response, 200, { user: authenticated.value, token: await createSession(authenticated.value) } as JsonValue);
+    const token = await createSession(authenticated.value);
+    response.setHeader(
+      "set-cookie",
+      `bookmark_session=${encodeURIComponent(token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; HttpOnly; Secure; SameSite=Lax`,
+    );
+    sendJson(response, 200, { user: authenticated.value, token } as JsonValue);
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/auth/session") {

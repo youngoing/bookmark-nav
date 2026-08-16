@@ -9,6 +9,11 @@ import { useTheme, type ThemeMode } from "./theme-provider";
 const initial: DashboardData = { bookmarks: [], folders: [], tags: [], totalClicks: 0 };
 const tagColor = (id: string, tags: DashboardData["tags"]) => tags.find((tag) => tag.id === id)?.color || "#94a3b8";
 
+function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return globalThis.fetch(input, { ...init, credentials: "include" });
+}
+
+
 export default function Home() {
   const { mode, setMode } = useTheme();
   const [user, setUser] = useState<UserResponse | null>(null);
@@ -36,7 +41,7 @@ export default function Home() {
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => new Set());
 
   async function loadSession(): Promise<void> {
-    const responseResult = await fromPromise(fetch("/api/auth/session", { cache: "no-store" }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
+    const responseResult = await fromPromise(apiFetch("/api/auth/session", { cache: "no-store" }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
     if (!responseResult.ok) { setAuthLoading(false); return; }
     const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
     if (responseResult.value.ok && bodyResult.ok) {
@@ -47,7 +52,7 @@ export default function Home() {
   }
 
   async function refreshDashboard() {
-    const responseResult = await fromPromise(fetch("/api/v1/dashboard", { cache: "no-store" }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
+    const responseResult = await fromPromise(apiFetch("/api/v1/dashboard", { cache: "no-store" }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
     if (!responseResult.ok) { setLoading(false); return; }
     const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
     if (bodyResult.ok) {
@@ -71,7 +76,7 @@ export default function Home() {
     if (activeFolder !== "all") params.set("folderId", activeFolder);
     if (activeTag) params.set("tagId", activeTag);
     if (query.trim()) params.set("q", query.trim());
-    const responseResult = await fromPromise(fetch(`/api/v1/bookmarks/page?${params.toString()}`, { cache: "no-store" }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
+    const responseResult = await fromPromise(apiFetch(`/api/v1/bookmarks/page?${params.toString()}`, { cache: "no-store" }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
     if (!responseResult.ok) {
       setPageInfo({ items: [], page: 1, pageSize: 9, total: 0, totalPages: 0 });
       setPageError(responseResult.error.message);
@@ -110,7 +115,7 @@ export default function Home() {
   function handleAdd(bookmark: BookmarkType) { void refreshDashboard(); setShowAdd(false); setActiveView("all"); setActiveFolder(bookmark.folderId); void loadPage(1); }
   async function clickBookmark(bookmark: BookmarkType): Promise<void> {
     const responseResult = await fromPromise(
-      fetch(`/api/v1/bookmarks/${bookmark.id}/click`, { method: "POST" }),
+      apiFetch(`/api/v1/bookmarks/${bookmark.id}/click`, { method: "POST" }),
       () => ({ code: "NETWORK_ERROR", message: "无法更新访问次数" }),
     );
     if (!responseResult.ok) return;
@@ -141,7 +146,7 @@ export default function Home() {
     void refreshDashboard();
   }
   async function deleteTag(tag: TagType): Promise<void> {
-    const responseResult = await fromPromise(fetch(`/api/v1/tags/${tag.id}`, { method: "DELETE" }), () => ({ code: "NETWORK_ERROR", message: "无法删除标签" }));
+    const responseResult = await fromPromise(apiFetch(`/api/v1/tags/${tag.id}`, { method: "DELETE" }), () => ({ code: "NETWORK_ERROR", message: "无法删除标签" }));
     if (!responseResult.ok) return;
     const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
     if (!responseResult.value.ok || !bodyResult.ok || !tagResponse.safeParse(bodyResult.value).success) return;
@@ -150,7 +155,7 @@ export default function Home() {
   }
   async function deleteBookmark(bookmark: BookmarkType): Promise<void> {
     if (!window.confirm(`确定删除“${bookmark.title}”吗？`)) return;
-    const responseResult = await fromPromise(fetch(`/api/v1/bookmarks/${bookmark.id}`, { method: "DELETE" }), () => ({ code: "NETWORK_ERROR", message: "无法删除书签" }));
+    const responseResult = await fromPromise(apiFetch(`/api/v1/bookmarks/${bookmark.id}`, { method: "DELETE" }), () => ({ code: "NETWORK_ERROR", message: "无法删除书签" }));
     if (!responseResult.ok) return;
     const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
     if (!responseResult.value.ok || !bodyResult.ok || typeof bodyResult.value !== "object" || bodyResult.value === null || Array.isArray(bodyResult.value) || !("deleted" in bodyResult.value) || bodyResult.value.deleted !== true) return;
@@ -168,7 +173,7 @@ export default function Home() {
   }
 
   async function logout(): Promise<void> {
-    const result = await fromPromise(fetch("/api/auth/logout", { method: "POST" }), () => ({ code: "NETWORK_ERROR", message: "无法退出登录" }));
+    const result = await fromPromise(apiFetch("/api/auth/logout", { method: "POST" }), () => ({ code: "NETWORK_ERROR", message: "无法退出登录" }));
     if (result.ok) { setUser(null); setShowMenu(false); setData(initial); setPageInfo({ items: [], page: 1, pageSize: 9, total: 0, totalPages: 0 }); }
   }
 
@@ -235,7 +240,7 @@ function BookmarkInlineEditMode({ bookmarks, folders, tags, onSaved }: { bookmar
 
   async function saveDraft(draft: BookmarkDraft): Promise<void> {
     setSavingId(draft.id); setError(null);
-    const responseResult = await fromPromise(fetch(`/api/v1/bookmarks/${draft.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: draft.title, description: draft.description, folderId: draft.folderId, tags: draft.tags }) }), () => ({ code: "NETWORK_ERROR", message: "无法保存书签" }));
+    const responseResult = await fromPromise(apiFetch(`/api/v1/bookmarks/${draft.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: draft.title, description: draft.description, folderId: draft.folderId, tags: draft.tags }) }), () => ({ code: "NETWORK_ERROR", message: "无法保存书签" }));
     if (!responseResult.ok) { setError(responseResult.error.message); setSavingId(null); return; }
     const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
     const parsed = bodyResult.ok ? bookmarkResponse.safeParse(bodyResult.value) : null;
@@ -264,7 +269,7 @@ function LoginScreen({ onLoggedIn }: { onLoggedIn: (user: UserResponse) => void 
     event.preventDefault();
     setSubmitting(true);
     setError("");
-    const responseResult = await fromPromise(fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password }) }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
+    const responseResult = await fromPromise(apiFetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password }) }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
     if (!responseResult.ok) { setError(responseResult.error.message); setSubmitting(false); return; }
     const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
     if (!responseResult.value.ok || !bodyResult.ok) { setError(bodyResult.ok && typeof bodyResult.value === "object" && bodyResult.value !== null && "error" in bodyResult.value && typeof bodyResult.value.error === "string" ? bodyResult.value.error : "邮箱或密码不正确"); setSubmitting(false); return; }
@@ -284,7 +289,7 @@ function AccountModal({ user, onClose, onSaved }: { user: UserResponse; onClose:
   const [error, setError] = useState("");
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault(); setSaving(true); setError("");
-    const responseResult = await fromPromise(fetch("/api/v1/account", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, currentPassword: currentPassword || undefined, newPassword: newPassword || undefined }) }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
+    const responseResult = await fromPromise(apiFetch("/api/v1/account", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, currentPassword: currentPassword || undefined, newPassword: newPassword || undefined }) }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
     if (!responseResult.ok) { setError(responseResult.error.message); setSaving(false); return; }
     const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
     const parsed = bodyResult.ok ? sessionResponse.safeParse(bodyResult.value) : null;
@@ -301,7 +306,7 @@ function FolderModal({ folder, onClose, onSaved }: { folder: FolderType | null; 
   const [error, setError] = useState("");
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault(); setSaving(true); setError("");
-    const responseResult = await fromPromise(fetch(folder ? `/api/v1/folders/${folder.id}` : "/api/v1/folders", { method: folder ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, icon }) }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
+    const responseResult = await fromPromise(apiFetch(folder ? `/api/v1/folders/${folder.id}` : "/api/v1/folders", { method: folder ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, icon }) }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
     if (!responseResult.ok) { setError(responseResult.error.message); setSaving(false); return; }
     const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
     const parsed = bodyResult.ok ? folderResponse.safeParse(bodyResult.value) : null;
@@ -318,7 +323,7 @@ function TagModal({ tag, onClose, onSaved }: { tag: TagType | null; onClose: () 
   const [error, setError] = useState("");
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault(); setSaving(true); setError("");
-    const responseResult = await fromPromise(fetch(tag ? `/api/v1/tags/${tag.id}` : "/api/v1/tags", { method: tag ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, color }) }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
+    const responseResult = await fromPromise(apiFetch(tag ? `/api/v1/tags/${tag.id}` : "/api/v1/tags", { method: tag ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, color }) }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
     if (!responseResult.ok) { setError(responseResult.error.message); setSaving(false); return; }
     const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
     const parsed = bodyResult.ok ? tagResponse.safeParse(bodyResult.value) : null;
@@ -357,7 +362,7 @@ function EditBookmarkModal({ bookmarks, folders, tags, onClose, onSaved }: { boo
     event.preventDefault();
     if (!bookmark) return;
     setSaving(true); setError("");
-    const responseResult = await fromPromise(fetch(`/api/v1/bookmarks/${bookmark.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ title, description, folderId, tags: selectedTags }) }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
+    const responseResult = await fromPromise(apiFetch(`/api/v1/bookmarks/${bookmark.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ title, description, folderId, tags: selectedTags }) }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
     if (!responseResult.ok) { setError(responseResult.error.message); setSaving(false); return; }
     const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
     const parsed = bodyResult.ok ? bookmarkResponse.safeParse(bodyResult.value) : null;
@@ -380,7 +385,7 @@ function AddBookmarkModal({ folders, tags, onClose, onAdded }: { folders: Dashbo
     event.preventDefault();
     setError("");
     setSaving(true);
-    const request = fetch("/api/v1/bookmarks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, title: title || undefined, description, folderId, tags: selectedTags, isPublic: false }) });
+    const request = apiFetch("/api/v1/bookmarks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, title: title || undefined, description, folderId, tags: selectedTags, isPublic: false }) });
     fromPromise(request, () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" })).then((responseResult) => {
       if (!responseResult.ok) return responseResult;
       return fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" })).then((bodyResult) => {

@@ -1,5 +1,5 @@
 const LOCAL_BACKEND_URL = "http://localhost:4000";
-const PRODUCTION_BACKEND_URL = "https://youngoong.cn";
+const PRODUCTION_BACKEND_URL = "http://127.0.0.1:4001";
 
 export function getBackendUrl(request: Request): string {
   const configuredUrl = process.env.BACKEND_URL?.trim();

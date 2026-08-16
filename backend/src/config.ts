@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 
 const envPath = [
+  resolve(process.cwd(), ".env"),
   resolve(process.cwd(), "backend/.env"),
   resolve(process.cwd(), "../backend/.env"),
 ].find(existsSync);
