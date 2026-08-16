@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { loginResponse } from "@loomark/shared";
 import { getBackendUrl } from "../../../../lib/backend";
+import { getPublicUrl } from "../../../../lib/public-url";
 
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
@@ -9,7 +10,7 @@ export async function GET(request: Request): Promise<Response> {
   const storedState = request.headers
     .get("cookie")
     ?.match(/(?:^|;\s*)google_oauth_state=([^;]+)/)?.[1];
-  const failureRedirect = new URL("/", request.url);
+  const failureRedirect = getPublicUrl("/", request);
   if (url.searchParams.has("error"))
     failureRedirect.searchParams.set("google_error", "cancelled");
   if (!state || !storedState || state !== storedState || !code) {
@@ -57,7 +58,7 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.redirect(failureRedirect);
   }
   console.info("[google oauth callback] login succeeded");
-  const response = NextResponse.redirect(new URL("/", request.url));
+  const response = NextResponse.redirect(getPublicUrl("/", request));
   response.cookies.delete("google_oauth_state");
   response.cookies.set("bookmark_session", parsed.data.token, {
     httpOnly: true,
