@@ -1,6 +1,7 @@
 node_modules/
 .next/
 frontend/.next/
+frontend/.next-deploy/
 backend/.env
 frontend/.env
 frontend/.env.local

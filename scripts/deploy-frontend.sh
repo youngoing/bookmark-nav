@@ -26,6 +26,8 @@ TARGET_DIR="$TARGET_FRONTEND_DIR"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 FRONTEND_DIR="$ROOT_DIR/frontend"
+BUILD_DIST_NAME=".next-deploy"
+BUILD_DIST_DIR="$FRONTEND_DIR/$BUILD_DIST_NAME"
 
 # Load optional deploy environment config (e.g. DEPLOY_HOST, DEPLOY_SSH_PORT).
 DEPLOY_ENV_FILE="${DEPLOY_ENV_FILE:-$SCRIPT_DIR/deploy.env}"
@@ -84,9 +86,10 @@ resolve_pnpm() {
 PNPM_CMD=$(resolve_pnpm)
 
 echo "==> Building frontend..."
-$PNPM_CMD --filter @loomark/frontend build
+rm -rf "$BUILD_DIST_DIR"
+NEXT_DIST_DIR="$BUILD_DIST_NAME" $PNPM_CMD --filter @loomark/frontend build
 
-STANDALONE_DIR="$FRONTEND_DIR/.next/standalone"
+STANDALONE_DIR="$BUILD_DIST_DIR/standalone"
 if [ ! -d "$STANDALONE_DIR" ]; then
   echo "ERROR: $STANDALONE_DIR not found. Make sure next.config.ts uses output: 'standalone'." >&2
   exit 1
@@ -101,8 +104,8 @@ stage_artifacts() {
   cp -R "$STANDALONE_DIR/"* "$out_dir/"
 
   # Next.js standalone does not copy static assets or public files by default.
-  mkdir -p "$out_dir/frontend/.next/static"
-  cp -R "$FRONTEND_DIR/.next/static/"* "$out_dir/frontend/.next/static/"
+  mkdir -p "$out_dir/frontend/$BUILD_DIST_NAME/static"
+  cp -R "$BUILD_DIST_DIR/static/." "$out_dir/frontend/$BUILD_DIST_NAME/static/"
 
   if [ -d "$FRONTEND_DIR/public" ] && [ "$(ls -A "$FRONTEND_DIR/public")" ]; then
     mkdir -p "$out_dir/frontend/public"
@@ -112,6 +115,14 @@ stage_artifacts() {
   if [ ! -f "$out_dir/frontend/server.js" ]; then
     echo "ERROR: Standalone entrypoint not found at $out_dir/frontend/server.js." >&2
     echo "Check frontend/next.config.ts outputFileTracingRoot." >&2
+    return 1
+  fi
+  if [ ! -f "$out_dir/frontend/$BUILD_DIST_NAME/server/webpack-runtime.js" ]; then
+    echo "ERROR: Next.js server runtime is missing from staged artifacts." >&2
+    return 1
+  fi
+  if [ ! -d "$out_dir/frontend/$BUILD_DIST_NAME/server/chunks" ]; then
+    echo "ERROR: Next.js server chunks are missing from staged artifacts." >&2
     return 1
   fi
 
@@ -143,17 +154,32 @@ run_pm2_local() {
 
 deploy_local() {
   local target="$TARGET_DIR"
+  local incoming="${target}.incoming"
+  local previous="${target}.previous"
 
-  echo "==> Preparing deploy directory: $target"
-  if ! mkdir -p "$target" 2>/dev/null; then
+  echo "==> Preparing deploy directory: $incoming"
+  if ! mkdir -p "$(dirname "$target")" 2>/dev/null; then
     echo "ERROR: Cannot create $target. Run with sudo or set DEPLOY_HOST for remote deploy." >&2
     exit 1
   fi
 
-  stage_artifacts "$target"
+  rm -rf "$incoming"
+  stage_artifacts "$incoming"
 
-  echo "==> Deploying with PM2..."
-  run_pm2_local "$target"
+  echo "==> Switching release and deploying with PM2..."
+  local pm2_cmd="${PM2_CMD:-$(command -v pm2 || true)}"
+  [ -z "$pm2_cmd" ] && pm2_cmd="$PNPM_CMD exec pm2"
+  $pm2_cmd delete bookmark-nav-frontend >/dev/null 2>&1 || true
+  rm -rf "$previous"
+  [ -d "$target" ] && mv "$target" "$previous"
+  mv "$incoming" "$target"
+  if ! $pm2_cmd start "$target/ecosystem.config.cjs" --env production; then
+    rm -rf "$target"
+    [ -d "$previous" ] && mv "$previous" "$target"
+    [ -d "$target" ] && $pm2_cmd start "$target/ecosystem.config.cjs" --env production
+    exit 1
+  fi
+  rm -rf "$previous"
 
   echo "==> Frontend deployed to $target"
 }
@@ -221,6 +247,7 @@ deploy_remote() {
 
   local tmp_dir=""
   local archive=""
+  local remote_archive="/tmp/bookmark-nav-frontend-deploy.tar.gz"
 
   cleanup_remote() {
     local exit_code=$?
@@ -239,28 +266,39 @@ deploy_remote() {
   echo "==> Creating deploy archive..."
   create_archive "$tmp_dir" "$archive"
 
-  echo "==> Creating remote directory..."
-  run_remote "mkdir -p $remote_dir"
-
-  echo "==> Uploading build archive to $user@$host:$remote_dir ..."
-  upload_archive "$archive" "$user@$host:$remote_dir/deploy.tar.gz"
+  echo "==> Uploading build archive to $user@$host:$remote_archive ..."
+  run_remote "rm -f $remote_archive"
+  upload_archive "$archive" "$user@$host:$remote_archive"
 
   echo "==> Installing and restarting on remote..."
   run_remote "
     set -e
-    cd $remote_dir
-    find . -mindepth 1 -maxdepth 1 ! -name 'deploy.tar.gz' -exec rm -rf {} +
-    tar -xzf deploy.tar.gz
-    rm deploy.tar.gz
+    incoming=${remote_dir}.incoming
+    previous=${remote_dir}.previous
+    rm -rf \"\$incoming\"
+    mkdir -p \"\$incoming\"
+    tar -xzf $remote_archive -C \"\$incoming\"
+    rm -f $remote_archive
+    test -f \"\$incoming/frontend/server.js\"
+    test -f \"\$incoming/frontend/$BUILD_DIST_NAME/server/webpack-runtime.js\"
+    test -d \"\$incoming/frontend/$BUILD_DIST_NAME/server/chunks\"
     if command -v pm2 >/dev/null 2>&1; then
       pm2 delete bookmark-nav-frontend >/dev/null 2>&1 || true
-      sleep 1
-      pm2 start ecosystem.config.cjs --env production
+      pm2_cmd=pm2
     else
       npx pm2 delete bookmark-nav-frontend >/dev/null 2>&1 || true
-      sleep 1
-      npx pm2 start ecosystem.config.cjs --env production
+      pm2_cmd='npx pm2'
     fi
+    rm -rf \"\$previous\"
+    [ ! -d $remote_dir ] || mv $remote_dir \"\$previous\"
+    mv \"\$incoming\" $remote_dir
+    if ! \$pm2_cmd start $remote_dir/ecosystem.config.cjs --env production; then
+      rm -rf $remote_dir
+      [ ! -d \"\$previous\" ] || mv \"\$previous\" $remote_dir
+      [ ! -d $remote_dir ] || \$pm2_cmd start $remote_dir/ecosystem.config.cjs --env production
+      exit 1
+    fi
+    rm -rf \"\$previous\"
   "
 
   echo "==> Frontend deployed to $user@$host:$remote_dir"
