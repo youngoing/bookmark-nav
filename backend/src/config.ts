@@ -17,7 +17,6 @@ const environment = z.object({
   MONGODB_APP_NAME: z.string().min(1).default("bookmark-nav"),
   MONGODB_SERVER_SELECTION_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   AUTH_SECRET: z.string().min(16).default("bookmark-nav-development-secret-change-me"),
-  API_TOKEN: z.string().min(1).default("demo-api-token"),
   GOOGLE_CLIENT_ID: z.string().default(""),
   GOOGLE_CLIENT_SECRET: z.string().default(""),
   GOOGLE_REDIRECT_URI: z.string().url().default("http://localhost:3000/auth/google/callback"),

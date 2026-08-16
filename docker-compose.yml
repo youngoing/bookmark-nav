@@ -8,7 +8,6 @@ services:
     environment:
       PORT: 4000
       AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
-      API_TOKEN: ${API_TOKEN:-demo-api-token}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://youngoing.cn/auth/google/callback}

@@ -1,8 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "Loomark Save",
-  "version": "0.1.0",
-  "description": "Save the current page to your Loomark workspace",
+  "name": "bookmark-nav",
+  "version": "1.0.0",
+  "description": "一键保存当前页面到 bookmark-nav",
   "permissions": ["activeTab", "storage"],
-  "action": { "default_popup": "popup.html" }
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "保存到 bookmark-nav"
+  }
 }

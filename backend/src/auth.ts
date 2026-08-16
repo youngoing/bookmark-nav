@@ -1,9 +1,17 @@
 import { jwtVerify, SignJWT } from "jose";
-import { randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  scrypt,
+  timingSafeEqual,
+} from "node:crypto";
 import {
   failure,
   fromPromise,
   success,
+  type ApiKeyCreatedResponse,
+  type ApiKeyResponse,
   type AccountUpdateInput,
   type Result,
   type UserResponse,
@@ -12,6 +20,10 @@ import { z } from "zod";
 import type { WithId } from "mongodb";
 import { ProxyAgent } from "undici";
 import { config } from "./config";
+import {
+  getApiKeysCollection,
+  type ApiKeyDocument,
+} from "./database/collections/api-keys";
 import {
   getUsersCollection,
   userDocumentSchema,
@@ -50,6 +62,10 @@ export type GoogleAuthenticationError = {
     | "GOOGLE_TOKEN_EXCHANGE_FAILED"
     | "GOOGLE_PROFILE_INVALID"
     | "ACCOUNT_CREATION_FAILED";
+  message: string;
+};
+export type ApiKeyError = {
+  code: "API_KEY_INVALID" | "ACCOUNT_NOT_FOUND";
   message: string;
 };
 
@@ -361,6 +377,84 @@ export async function getSessionUser(
   return parsed.ok ? success(publicUser(parsed.value)) : parsed;
 }
 
+function hashApiKey(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
+}
+
+function publicApiKey(key: ApiKeyDocument): ApiKeyResponse {
+  return {
+    id: key.id,
+    name: key.name,
+    prefix: key.prefix,
+    createdAt: key.createdAt,
+    lastUsedAt: key.lastUsedAt,
+  };
+}
+
+export async function listApiKeys(ownerId: string): Promise<ApiKeyResponse[]> {
+  const keys = await (await getApiKeysCollection())
+    .find({ ownerId })
+    .sort({ createdAt: -1 })
+    .toArray();
+  return keys.map(publicApiKey);
+}
+
+export async function createApiKey(
+  ownerId: string,
+  name: string,
+): Promise<ApiKeyCreatedResponse> {
+  const rawKey = `bmn_${randomBytes(32).toString("base64url")}`;
+  const now = new Date().toISOString();
+  const document: ApiKeyDocument = {
+    id: randomUUID(),
+    ownerId,
+    name,
+    prefix: `${rawKey.slice(0, 12)}...`,
+    keyHash: hashApiKey(rawKey),
+    createdAt: now,
+    lastUsedAt: null,
+  };
+  await (await getApiKeysCollection()).insertOne(document);
+  return { ...publicApiKey(document), key: rawKey };
+}
+
+export async function revokeApiKey(
+  ownerId: string,
+  id: string,
+): Promise<boolean> {
+  return (
+    (await (await getApiKeysCollection()).deleteOne({ id, ownerId }))
+      .deletedCount === 1
+  );
+}
+
+export async function getApiKeyUser(
+  rawKey?: string,
+): Promise<Result<UserResponse, ApiKeyError>> {
+  if (!rawKey?.startsWith("bmn_"))
+    return failure({ code: "API_KEY_INVALID", message: "API Key 无效" });
+  const keyHash = hashApiKey(rawKey);
+  const keys = await getApiKeysCollection();
+  const key = await keys.findOne({ keyHash });
+  if (!key)
+    return failure({
+      code: "API_KEY_INVALID",
+      message: "API Key 无效或已撤销",
+    });
+  const user = await (await getUsersCollection()).findOne({ id: key.ownerId });
+  if (!user)
+    return failure({ code: "ACCOUNT_NOT_FOUND", message: "账号不存在" });
+  const parsed = parseUser(user);
+  if (!parsed.ok)
+    return failure({ code: "ACCOUNT_NOT_FOUND", message: "账号数据无效" });
+  const lastUsedAt = new Date().toISOString();
+  await keys.updateOne(
+    { id: key.id, ownerId: key.ownerId, keyHash },
+    { $set: { lastUsedAt } },
+  );
+  return success(publicUser(parsed.value));
+}
+
 export async function updateAccount(
   token: string | undefined,
   input: AccountUpdateInput,
@@ -403,8 +497,4 @@ export async function updateAccount(
       updatedAt,
     }),
   );
-}
-
-export function isValidApiToken(token?: string): boolean {
-  return Boolean(token && token === config.API_TOKEN);
 }

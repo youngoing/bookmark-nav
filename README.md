@@ -21,8 +21,8 @@ AI_CODE_RULES.md   AI 与团队统一编码约束
 - 添加书签时自动推导域名和 Google favicon
 - 点击统计
 - tRPC 路由：`/api/trpc`
-- 浏览器插件友好的 REST 写入接口：`POST /api/v1/bookmarks`
-- Bearer API Token 鉴权，默认开发 Token 为 `demo-api-token`
+- 用户隔离的 REST 接口，所有个人资源均由 Session 中的用户身份限定
+- 独立的分享发布与发现接口，分享内容不会混入个人书签
 - Credentials 登录 Cookie 接口：`POST /api/auth/login`
 - 邮箱密码登录使用 backend 固定初始化账号，账号设置、目录和标签修改均通过受鉴权 API 完成
 
@@ -42,18 +42,9 @@ pnpm dev:frontend
 
 打开 http://localhost:3000。生产构建使用 `pnpm build && pnpm start`。
 
-未配置 `BACKEND_URL` 时，前端 API 代理在本地使用 `http://localhost:4000`，生产环境默认使用同机 backend 的 `http://127.0.0.1:4001`。容器或独立部署等场景请通过 `BACKEND_URL` 显式覆盖后端地址。
+未配置 `BACKEND_URL` 时，前端 API 代理在本地和生产环境均使用 `4001` 端口。容器或独立部署等场景请通过 `BACKEND_URL` 显式覆盖后端地址。
 
-## 浏览器插件接口
-
-```bash
-curl -X POST http://localhost:3000/api/v1/bookmarks \
-  -H 'Authorization: Bearer demo-api-token' \
-  -H 'Content-Type: application/json' \
-  -d '{"url":"https://example.com","title":"Example","folderId":"dev","tags":["ai"]}'
-```
-
-`GET /api/v1/bookmarks` 返回公开的当前工作区书签；写入接口必须携带 Token。生产环境请通过环境变量 `API_TOKEN` 设置随机值，并使用 HTTPS。
+浏览器扩展不能使用系统级 Token 访问个人数据；后续扩展接入必须使用绑定具体用户的授权令牌。
 
 ## 自托管
 
@@ -61,10 +52,10 @@ curl -X POST http://localhost:3000/api/v1/bookmarks \
 docker compose up -d --build
 ```
 
-MongoDB 已包含在 Compose 中，独立 backend 负责 MongoDB 连接、书签数据访问和鉴权。集合定义位于 `backend/src/database/collections`，backend 启动时创建并校验固定的 `bookmarks`、`folders`、`tags` 和 `users` collection、字段 validator 和索引；运行期间不会按请求动态创建 collection。数据库连接通过统一模块设置 `MONGODB_APP_NAME`（默认 `bookmark-nav`），便于在 MongoDB 监控中识别应用。
+MongoDB 已包含在 Compose 中，独立 backend 负责 MongoDB 连接、书签数据访问和鉴权。集合定义位于 `backend/src/database/collections`，backend 启动时创建并校验固定的 `sites`、`bookmarks`、`folders`、`tags`、`bookmark_publications`、`shared_collections` 和 `users` collection、字段 validator 和索引。`Site` 是父级网站，`Bookmark` 通过 `siteId` 保存网站下的具体子链接；个人标签可将选定书签发布为不含私人元数据的共享合集快照。个人数据集合模式不匹配时会直接删除重建，不执行旧数据迁移。数据库连接通过统一模块设置 `MONGODB_APP_NAME`（默认 `bookmark-nav`），便于在 MongoDB 监控中识别应用。
 
 Google 登录使用 OAuth 2.0 授权码流程：前端只跳转到 Google，不接触密钥；回调地址为 `/auth/google/callback`，backend 使用 `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` 换取并验证用户信息，按邮箱匹配已有用户，或在首次登录时自动创建用户，最后签发本项目自己的 HttpOnly Cookie。
 
 ## 接口选择
 
-前端和后端同仓库部署，核心业务协议使用 tRPC；插件使用旁路 REST endpoint，避免在 MV3 service worker 中引入 tRPC runtime。两者共享同一组业务函数，后续可以用 `trpc-openapi` 生成更完整的 OpenAPI 文档。
+前端和后端同仓库部署，Web 端通过同源 REST 代理访问 backend，所有个人资源接口都要求携带用户 Session。tRPC 保留同样的 Session 用户上下文。浏览器扩展后续必须接入绑定具体用户的授权令牌，不能使用系统级共享 Token。
