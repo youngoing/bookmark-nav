@@ -1,11 +1,5 @@
 import { jwtVerify, SignJWT } from "jose";
-import {
-  createHash,
-  randomBytes,
-  randomUUID,
-  scrypt,
-  timingSafeEqual,
-} from "node:crypto";
+import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import {
   failure,
   fromPromise,
@@ -418,14 +412,8 @@ export async function createApiKey(
   return { ...publicApiKey(document), key: rawKey };
 }
 
-export async function revokeApiKey(
-  ownerId: string,
-  id: string,
-): Promise<boolean> {
-  return (
-    (await (await getApiKeysCollection()).deleteOne({ id, ownerId }))
-      .deletedCount === 1
-  );
+export async function revokeApiKey(ownerId: string, id: string): Promise<boolean> {
+  return (await (await getApiKeysCollection()).deleteOne({ id, ownerId })).deletedCount === 1;
 }
 
 export async function getApiKeyUser(
@@ -437,10 +425,7 @@ export async function getApiKeyUser(
   const keys = await getApiKeysCollection();
   const key = await keys.findOne({ keyHash });
   if (!key)
-    return failure({
-      code: "API_KEY_INVALID",
-      message: "API Key 无效或已撤销",
-    });
+    return failure({ code: "API_KEY_INVALID", message: "API Key 无效或已撤销" });
   const user = await (await getUsersCollection()).findOne({ id: key.ownerId });
   if (!user)
     return failure({ code: "ACCOUNT_NOT_FOUND", message: "账号不存在" });

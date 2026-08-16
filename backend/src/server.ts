@@ -321,9 +321,7 @@ async function handleRest(
     sendJson(
       response,
       revoked ? 200 : 404,
-      revoked
-        ? { revoked: true }
-        : { error: "API Key 不存在", code: "NOT_FOUND" },
+      revoked ? { revoked: true } : { error: "API Key 不存在", code: "NOT_FOUND" },
     );
     return;
   }
