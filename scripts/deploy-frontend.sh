@@ -35,7 +35,6 @@ if [ -f "$DEPLOY_ENV_FILE" ]; then
   . "$DEPLOY_ENV_FILE"
   set +a
 fi
-FRONTEND_ENV_FILE="${FRONTEND_ENV_FILE:-$FRONTEND_DIR/.env}"
 
 # If deploying locally to a protected directory (e.g. under /root), re-run the
 # whole script with sudo while preserving PATH so pnpm/corepack stay available.
@@ -84,11 +83,6 @@ resolve_pnpm() {
 
 PNPM_CMD=$(resolve_pnpm)
 
-if [ ! -f "$FRONTEND_ENV_FILE" ]; then
-  echo "ERROR: Frontend environment file not found: $FRONTEND_ENV_FILE" >&2
-  exit 1
-fi
-
 echo "==> Building frontend..."
 $PNPM_CMD --filter @loomark/frontend build
 
@@ -116,8 +110,6 @@ stage_artifacts() {
   fi
 
   cp "$FRONTEND_DIR/ecosystem.config.cjs" "$out_dir/ecosystem.config.cjs"
-  cp "$FRONTEND_ENV_FILE" "$out_dir/.env"
-  chmod 600 "$out_dir/.env"
 }
 
 create_archive() {

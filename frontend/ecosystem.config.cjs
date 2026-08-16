@@ -1,8 +1,11 @@
-const { readFileSync } = require("node:fs");
-const { join } = require("node:path");
-const { parseEnv } = require("node:util");
-
-const runtimeEnv = parseEnv(readFileSync(join(__dirname, ".env"), "utf8"));
+const productionEnv = {
+  NODE_ENV: "production",
+  PORT: 3000,
+  HOSTNAME: "0.0.0.0",
+  BACKEND_URL: "http://127.0.0.1:4001",
+  GOOGLE_CLIENT_ID: "925220771479-7kjk6hak8dhrji3as6ami8uprk8uv16n.apps.googleusercontent.com",
+  GOOGLE_REDIRECT_URI: "https://youongoing.cn/auth/google/callback",
+};
 
 module.exports = {
   apps: [
@@ -10,20 +13,8 @@ module.exports = {
       name: "bookmark-nav-frontend",
       script: "./frontend/server.js",
       cwd: __dirname,
-      env: {
-        NODE_ENV: "production",
-        PORT: 3000,
-        HOSTNAME: "0.0.0.0",
-        BACKEND_URL: "http://127.0.0.1:4001",
-        ...runtimeEnv,
-      },
-      env_production: {
-        NODE_ENV: "production",
-        PORT: 3000,
-        HOSTNAME: "0.0.0.0",
-        BACKEND_URL: "http://127.0.0.1:4001",
-        ...runtimeEnv,
-      },
+      env: productionEnv,
+      env_production: productionEnv,
       instances: 1,
       exec_mode: "fork",
       max_memory_restart: "500M",
