@@ -10,3 +10,7 @@ backend/dist/
 scripts/deploy.env
 *.log
 *.tsbuildinfo
+.DS_Store
+*.DS_Store
+dist/
+*/dist/
