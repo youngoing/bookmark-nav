@@ -4,6 +4,7 @@ const capture = byId("capture");
 const settings = byId("settings");
 let activeTab = null;
 let tags = [];
+let folders = [];
 const selectedTagIds = new Set();
 
 function normalizeEndpoint(value) {
@@ -45,19 +46,27 @@ async function request(endpoint, apiKey, path, init = {}) {
   return response;
 }
 
-async function loadTags(endpoint, apiKey) {
-  const response = await request(endpoint, apiKey, "/api/v1/tags");
+async function loadWorkspace(endpoint, apiKey) {
+  const response = await request(endpoint, apiKey, "/api/v1/dashboard");
   const body = await response.json();
-  if (!Array.isArray(body)) throw new Error("标签数据无效");
-  tags = body.filter((tag) =>
+  if (!body || typeof body !== "object" || !Array.isArray(body.tags) || !Array.isArray(body.folders)) throw new Error("工作区数据无效");
+  tags = body.tags.filter((tag) =>
     tag &&
     typeof tag.id === "string" &&
     typeof tag.name === "string" &&
     typeof tag.color === "string" &&
     (tag.parentId === null || typeof tag.parentId === "string")
   );
+  folders = body.folders.filter((folder) =>
+    folder &&
+    folder.id !== "all" &&
+    typeof folder.id === "string" &&
+    typeof folder.name === "string" &&
+    typeof folder.icon === "string"
+  );
   selectedTagIds.clear();
   renderTags();
+  renderFolders();
 }
 
 function orderedTags() {
@@ -115,6 +124,21 @@ function renderTags() {
   }
 }
 
+function renderFolders() {
+  const select = byId("folderId");
+  select.replaceChildren();
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "";
+  defaultOption.textContent = "继承网站或未分类";
+  select.append(defaultOption);
+  for (const folder of folders) {
+    const option = document.createElement("option");
+    option.value = folder.id;
+    option.textContent = `${folder.icon} ${folder.name}`;
+    select.append(option);
+  }
+}
+
 async function readPageDescription(tab) {
   if (!tab?.id || !/^https?:/.test(tab.url || "")) return "";
   try {
@@ -155,10 +179,10 @@ async function restore() {
   byId("apiKey").value = stored.apiKey;
   showCapture(stored.endpoint);
   try {
-    await loadTags(stored.endpoint, stored.apiKey);
+    await loadWorkspace(stored.endpoint, stored.apiKey);
     setStatus(byId("captureStatus"), "");
   } catch (error) {
-    setStatus(byId("captureStatus"), error instanceof Error ? error.message : "标签加载失败", true);
+    setStatus(byId("captureStatus"), error instanceof Error ? error.message : "工作区加载失败", true);
   }
 }
 
@@ -170,7 +194,7 @@ byId("connect").addEventListener("click", async () => {
     const endpoint = normalizeEndpoint(byId("endpoint").value.trim());
     const apiKey = byId("apiKey").value.trim();
     if (!apiKey) throw new Error("请输入 API Key");
-    await loadTags(endpoint, apiKey);
+    await loadWorkspace(endpoint, apiKey);
     await chrome.storage.local.set({ endpoint, apiKey });
     showCapture(endpoint);
     setStatus(byId("captureStatus"), "");
@@ -197,6 +221,7 @@ byId("save").addEventListener("click", async () => {
         url,
         title: byId("title").value.trim() || activeTab?.title || url,
         description: byId("description").value.trim(),
+        folderId: byId("folderId").value || null,
         tags: [...selectedTagIds],
       }),
     });
