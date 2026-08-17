@@ -5,6 +5,7 @@ import { createElement } from "react";
 import type { BookmarkResponse, DashboardData, JsonValue, UserResponse } from "@loomark/shared";
 import Home from "./page";
 import { ThemeProvider } from "./theme-provider";
+import { WorkspaceModeProvider, type WorkspaceMode } from "./workspace-mode";
 
 const account: UserResponse = { id: "test-user", email: "test@bookmark-nav.local", name: "测试账号", createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" };
 const alpha: BookmarkResponse = { id: "alpha", ownerId: account.id, siteId: "site-alpha", title: "Alpha 书签", url: "https://alpha.example", description: "第一页内容", domain: "alpha.example", favicon: "https://alpha.example/favicon.ico", folderId: "dev", tags: ["frontend"], clicks: 10, isFavorite: false, publicationId: null, createdAt: "2025-01-02T00:00:00.000Z", updatedAt: "2025-01-02T00:00:00.000Z" };
@@ -19,6 +20,9 @@ const dashboard: DashboardData = {
 
 function json(body: JsonValue, status = 200): Response { return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }); }
 function requestUrl(input: RequestInfo | URL): URL { return new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, "http://localhost"); }
+function renderWorkspace(mode: WorkspaceMode = "display") {
+  return render(createElement(ThemeProvider, { children: createElement(WorkspaceModeProvider, { mode, children: createElement(Home) }) }));
+}
 
 afterEach(() => { vi.unstubAllGlobals(); window.localStorage.clear(); });
 
@@ -35,9 +39,11 @@ describe("书签工作台用户流程", () => {
       return json({ error: "Not found" }, 404);
     }));
     const user = userEvent.setup();
-    render(createElement(ThemeProvider, { children: createElement(Home) }));
+    renderWorkspace();
 
     expect(await screen.findByText("Alpha 书签")).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: "进入编辑页" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "添加书签" })).toBeNull();
     expect(screen.getByRole("list", { name: "大图书签" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "列表展示" }));
     expect(screen.getByRole("list", { name: "列表书签" })).toBeTruthy();
@@ -60,7 +66,7 @@ describe("书签工作台用户流程", () => {
       return json({ error: "Not found" }, 404);
     }));
     const user = userEvent.setup();
-    render(createElement(ThemeProvider, { children: createElement(Home) }));
+    renderWorkspace();
 
     expect(await screen.findByRole("heading", { name: "登录" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Google 登录" }).getAttribute("aria-selected")).toBe("true");
@@ -92,10 +98,10 @@ describe("书签工作台用户流程", () => {
       return json({ error: "Not found" }, 404);
     }));
     const user = userEvent.setup();
-    render(createElement(ThemeProvider, { children: createElement(Home) }));
+    renderWorkspace("edit");
 
-    expect(await screen.findByRole("button", { name: "编辑标签" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "编辑标签" }));
+    expect(await screen.findByRole("heading", { name: "管理配置" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /标签管理/ }));
     await user.click(screen.getByRole("button", { name: "编辑前端" }));
     expect(screen.getByRole("heading", { name: "编辑标签" })).toBeTruthy();
     const nameInput = screen.getByLabelText("名称");
@@ -119,14 +125,14 @@ describe("书签工作台用户流程", () => {
       return json({ error: "Not found" }, 404);
     }));
     const user = userEvent.setup();
-    render(createElement(ThemeProvider, { children: createElement(Home) }));
+    renderWorkspace();
 
     expect(await screen.findByText("10")).toBeTruthy();
     await user.click(screen.getByRole("link", { name: /Alpha 书签/ }));
     expect(await screen.findByText("11")).toBeTruthy();
   });
 
-  it("用户可以让当前页面所有书签进入行内编辑模式", async () => {
+  it("编辑页默认展示独立的书签管理配置面板", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = requestUrl(input);
       if (url.pathname === "/api/auth/session") return json({ user: account });
@@ -136,14 +142,47 @@ describe("书签工作台用户流程", () => {
       return json({ error: "Not found" }, 404);
     }));
     const user = userEvent.setup();
-    render(createElement(ThemeProvider, { children: createElement(Home) }));
+    renderWorkspace("edit");
 
-    await user.click(await screen.findByRole("button", { name: "编辑书签" }));
-    expect(screen.getByRole("group", { name: "当前页面书签编辑模式" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "管理配置" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "书签管理" })).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "当前页面书签编辑模式" })).toBeNull();
+    expect(await screen.findByText("Alpha 书签")).toBeTruthy();
     expect(screen.getByRole("button", { name: "编辑Alpha 书签" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "删除Alpha 书签" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "编辑Alpha 书签" }));
     expect(screen.getByRole("heading", { name: "编辑书签" })).toBeTruthy();
+  });
+
+  it("后台通用查询组件支持字段来源、OR/AND 与分页条件", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.pathname === "/api/auth/session") return json({ user: account });
+      if (url.pathname === "/api/v1/dashboard") return json(dashboard);
+      if (url.pathname === "/api/v1/bookmarks/page") return json({ items: [alpha], page: 1, pageSize: 9, total: 1, totalPages: 1 });
+      return json({ error: "Not found" }, 404);
+    }));
+    const user = userEvent.setup();
+    renderWorkspace("edit");
+
+    expect(await screen.findByText("Alpha 书签")).toBeTruthy();
+    expect(screen.getByText("Beta 书签")).toBeTruthy();
+    await user.type(screen.getByLabelText("查询值"), "Beta");
+    expect(await screen.findByText("Beta 书签")).toBeTruthy();
+    expect(screen.queryByText("Alpha 书签")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "添加条件" }));
+    const values = screen.getAllByLabelText("查询值");
+    await user.type(values[1], "Alpha");
+    await user.selectOptions(screen.getByLabelText("组合"), "or");
+    expect(await screen.findByText("Alpha 书签")).toBeTruthy();
+    expect(screen.getByText("Beta 书签")).toBeTruthy();
+    await user.selectOptions(screen.getByLabelText("组合"), "and");
+    expect(await screen.findByText("没有匹配的书签")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "表结构" }));
+    await user.click(screen.getByRole("button", { name: "重置" }));
+    await user.type(screen.getByLabelText("查询值"), "alpha");
+    expect(await screen.findByText("Alpha 书签")).toBeTruthy();
+    expect(screen.queryByText("Beta 书签")).toBeNull();
   });
 
   it("个人书签与其他用户的分享在不同栏目展示", async () => {
@@ -158,10 +197,10 @@ describe("书签工作台用户流程", () => {
       return json({ error: "Not found" }, 404);
     }));
     const user = userEvent.setup();
-    render(createElement(ThemeProvider, { children: createElement(Home) }));
+    renderWorkspace("edit");
 
-    expect(await screen.findByText("Alpha 书签")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "发现" }));
+    expect(await screen.findByRole("heading", { name: "管理配置" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /分享管理/ }));
     await user.click(await screen.findByRole("tab", { name: "单条分享" }));
     expect(await screen.findByText("共享资料")).toBeTruthy();
     expect(screen.queryByText("Alpha 书签")).toBeNull();
@@ -181,10 +220,10 @@ describe("书签工作台用户流程", () => {
       return json({ error: "Not found" }, 404);
     }));
     const user = userEvent.setup();
-    render(createElement(ThemeProvider, { children: createElement(Home) }));
+    renderWorkspace("edit");
 
-    await screen.findByText("Alpha 书签");
-    await user.click(screen.getByRole("button", { name: "发现" }));
+    await screen.findByRole("heading", { name: "管理配置" });
+    await user.click(screen.getByRole("button", { name: /分享管理/ }));
     expect(await screen.findByText("前端精选")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "保存整个合集" }));
     expect((await screen.findByRole("button", { name: "已保存" })).hasAttribute("disabled")).toBe(true);
@@ -199,10 +238,10 @@ describe("书签工作台用户流程", () => {
       return json({ error: "Not found" }, 404);
     }));
     const user = userEvent.setup();
-    render(createElement(ThemeProvider, { children: createElement(Home) }));
+    renderWorkspace("edit");
 
-    await screen.findByText("Alpha 书签");
-    await user.click(screen.getByRole("button", { name: "网站2" }));
+    await screen.findByRole("heading", { name: "管理配置" });
+    await user.click(screen.getByRole("button", { name: /网站管理/ }));
     expect(screen.getByRole("button", { name: "编辑Alpha" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "为Alpha添加子链接" }));
     expect(screen.getByRole("heading", { name: "添加网站子链接" })).toBeTruthy();
@@ -220,7 +259,7 @@ describe("书签工作台用户流程", () => {
       return json({ error: "Not found" }, 404);
     }));
     const user = userEvent.setup();
-    render(createElement(ThemeProvider, { children: createElement(Home) }));
+    renderWorkspace();
 
     await screen.findByText("Alpha 书签");
     await user.click(screen.getByRole("button", { name: "测" }));
