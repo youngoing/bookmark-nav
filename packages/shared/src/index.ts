@@ -73,7 +73,7 @@ export type BookmarkPageResponse = z.infer<typeof bookmarkPageResponse>;
 
 export const folderCreateInput = z.object({
   name: z.string().trim().min(1).max(40),
-  icon: z.string().trim().min(1).max(8).default("◈"),
+  icon: z.string().trim().min(1).max(32).default("Folder"),
 });
 export const folderUpdateInput = folderCreateInput
   .partial()
@@ -103,6 +103,7 @@ export const tagUpdateInput = tagCreateInput
     (value) =>
       value.name !== undefined ||
       value.color !== undefined ||
+      value.icon !== undefined ||
       value.parentId !== undefined,
     { message: "At least one tag field is required" },
   );

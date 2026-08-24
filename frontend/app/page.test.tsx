@@ -47,6 +47,10 @@ describe("书签工作台用户流程", () => {
     expect(screen.getByRole("list", { name: "大图书签" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "列表展示" }));
     expect(screen.getByRole("list", { name: "列表书签" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "圆圈展示" }));
+    expect(screen.getByRole("list", { name: "圆圈书签" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "细列表展示" }));
+    expect(screen.getByRole("list", { name: "细列表书签" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "表格展示" }));
     expect(screen.getByRole("table")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "下一页" }));
