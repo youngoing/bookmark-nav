@@ -280,7 +280,8 @@ export async function getDashboard(ownerId: string): Promise<DashboardData> {
         id: "all",
         ownerId,
         name: "全部书签",
-        icon: "◈",
+        iconLibrary: "custom",
+        iconName: "◈",
         count: bookmarks.length,
         createdAt: now,
         updatedAt: now,
@@ -297,12 +298,13 @@ export async function listTagOptions(ownerId: string): Promise<TagOption[]> {
   const documents = await (await getTagsCollection())
     .find({ ownerId })
     .sort({ parentId: 1, createdAt: 1 })
-    .project<Pick<TagDocument, "id" | "name" | "color" | "icon" | "parentId">>({
+    .project<Pick<TagDocument, "id" | "name" | "color" | "iconLibrary" | "iconName" | "parentId">>({
       _id: 0,
       id: 1,
       name: 1,
       color: 1,
-      icon: 1,
+      iconLibrary: 1,
+      iconName: 1,
       parentId: 1,
     })
     .toArray();
@@ -310,7 +312,8 @@ export async function listTagOptions(ownerId: string): Promise<TagOption[]> {
     id: tag.id,
     name: tag.name,
     color: tag.color,
-    icon: tag.icon || "Tag",
+    iconLibrary: tag.iconLibrary || "lucide",
+    iconName: tag.iconName || "Tag",
     parentId: tag.parentId,
   }));
 }
@@ -327,7 +330,8 @@ export async function createFolder(
     id: randomUUID(),
     ownerId,
     name: input.name,
-    icon: input.icon,
+    iconLibrary: input.iconLibrary,
+    iconName: input.iconName,
     createdAt: now,
     updatedAt: now,
   };
@@ -352,7 +356,8 @@ export async function updateFolder(
   const updatedAt = new Date().toISOString();
   const updated = {
     name: input.name || current.name,
-    icon: input.icon || current.icon,
+    iconLibrary: input.iconLibrary || current.iconLibrary,
+    iconName: input.iconName || current.iconName,
   };
   await folders.updateOne({ id, ownerId }, { $set: { ...updated, updatedAt } });
   const count = await (
@@ -405,7 +410,8 @@ export async function createTag(
     ownerId,
     name: input.name,
     color: input.color,
-    icon: input.icon,
+    iconLibrary: input.iconLibrary,
+    iconName: input.iconName,
     parentId: input.parentId,
     collectionId: null,
     createdAt: now,
@@ -439,7 +445,7 @@ export async function updateTag(
   )
     return failure({ code: "DUPLICATE_NAME", message: "同级下已存在同名标签" });
   const updatedAt = new Date().toISOString();
-  const updated = { name, color: input.color || current.color, icon: input.icon || current.icon || "Tag", parentId };
+  const updated = { name, color: input.color || current.color, iconLibrary: input.iconLibrary || current.iconLibrary || "lucide", iconName: input.iconName || current.iconName || "Tag", parentId };
   await tags.updateOne({ id, ownerId }, { $set: { ...updated, updatedAt } });
   const count = await (
     await getBookmarksCollection()
@@ -889,7 +895,8 @@ export async function saveSharedCollection(
     const created = await createTag(ownerId, {
       name: collection.name,
       color: "#536dfe",
-      icon: "Tag",
+      iconLibrary: "lucide",
+      iconName: "Tag",
       parentId: null,
     });
     if (!created.ok) return created;

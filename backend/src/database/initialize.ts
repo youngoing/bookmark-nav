@@ -114,8 +114,23 @@ async function initializeCollection<T extends Document>(
     await collection.insertMany([...seeds]);
 }
 
+async function migrateLegacyIconFields(database: Db, collectionName: string, validator: Document, fallback: string): Promise<void> {
+  const info = await getCollectionInfo(database, collectionName);
+  if (info && !hasExpectedValidator(info, validator)) {
+    await database.command({ collMod: collectionName, validator, validationLevel: "strict", validationAction: "error" });
+  }
+  const collection = database.collection<{ _id: unknown; icon?: unknown }>(collectionName);
+  const legacyDocuments = await collection.find({ icon: { $exists: true } }).project({ _id: 1, icon: 1 }).toArray();
+  for (const document of legacyDocuments) {
+    const iconName = typeof document.icon === "string" && document.icon.trim() ? document.icon.trim() : fallback;
+    await collection.updateOne({ _id: document._id }, { $set: { iconLibrary: "lucide", iconName }, $unset: { icon: "" } });
+  }
+}
+
 export async function initializeDatabase(): Promise<void> {
   const database = await getDatabase();
+  await migrateLegacyIconFields(database, FOLDERS_COLLECTION_NAME, FOLDERS_VALIDATOR, "Folder");
+  await migrateLegacyIconFields(database, TAGS_COLLECTION_NAME, TAGS_VALIDATOR, "Tag");
   await initializeCollection<ApiKeyDocument>(
     database,
     API_KEYS_COLLECTION_NAME,
@@ -141,6 +156,7 @@ export async function initializeDatabase(): Promise<void> {
     FOLDERS_INDEXES,
     getFoldersCollectionFromDatabase(database),
     SEED_FOLDERS,
+    false,
     true,
   );
   await initializeCollection<TagDocument>(

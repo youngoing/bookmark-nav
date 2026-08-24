@@ -12,8 +12,8 @@ const alpha: BookmarkResponse = { id: "alpha", ownerId: account.id, siteId: "sit
 const beta: BookmarkResponse = { ...alpha, id: "beta", siteId: "site-beta", title: "Beta 书签", url: "https://beta.example", domain: "beta.example", favicon: "https://beta.example/favicon.ico", description: "第二页内容", createdAt: "2025-01-01T00:00:00.000Z" };
 const dashboard: DashboardData = {
   bookmarks: [alpha, beta],
-  folders: [{ id: "all", ownerId: account.id, name: "全部书签", icon: "◈", count: 2, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" }, { id: "dev", ownerId: account.id, name: "开发工具", icon: "⌘", count: 2, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" }],
-  tags: [{ id: "frontend", ownerId: account.id, name: "前端", color: "#3b82f6", parentId: null, collectionId: null, count: 2, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" }],
+  folders: [{ id: "all", ownerId: account.id, name: "全部书签", iconLibrary: "custom", iconName: "◈", count: 2, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" }, { id: "dev", ownerId: account.id, name: "开发工具", iconLibrary: "custom", iconName: "⌘", count: 2, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" }],
+  tags: [{ id: "frontend", ownerId: account.id, name: "前端", color: "#3b82f6", iconLibrary: "lucide", iconName: "Code2", parentId: null, collectionId: null, count: 2, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" }],
   sites: [{ id: "site-alpha", ownerId: account.id, domain: "alpha.example", name: "Alpha", homepageUrl: "https://alpha.example", favicon: "https://alpha.example/favicon.ico", folderId: "dev", tags: ["frontend"], count: 1, createdAt: "2025-01-01T00:00:00.000Z", updatedAt: "2025-01-01T00:00:00.000Z" }, { id: "site-beta", ownerId: account.id, domain: "beta.example", name: "Beta", homepageUrl: "https://beta.example", favicon: "https://beta.example/favicon.ico", folderId: null, tags: [], count: 1, createdAt: "2025-01-01T00:00:00.000Z", updatedAt: "2025-01-01T00:00:00.000Z" }],
   totalClicks: 20,
 };
@@ -42,8 +42,15 @@ describe("书签工作台用户流程", () => {
     renderWorkspace();
 
     expect(await screen.findByText("Alpha 书签")).toBeTruthy();
-    expect(screen.getAllByRole("link", { name: "进入编辑页" }).length).toBeGreaterThan(0);
+    expect(screen.queryByText("你的数字空间。")).toBeNull();
     expect(screen.queryByRole("button", { name: "添加书签" })).toBeNull();
+    const search = screen.getByPlaceholderText("搜索书签...");
+    await user.type(search, "alpha");
+    await user.click(screen.getByRole("button", { name: "最近添加" }));
+    expect((search as HTMLInputElement).value).toBe("");
+    const collapse = screen.getByRole("button", { name: "收起导航" });
+    await user.click(collapse);
+    expect(screen.getByRole("button", { name: "展开导航" })).toBeTruthy();
     expect(screen.getByRole("list", { name: "大图书签" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "列表展示" }));
     expect(screen.getByRole("list", { name: "列表书签" })).toBeTruthy();
@@ -266,7 +273,7 @@ describe("书签工作台用户流程", () => {
     renderWorkspace();
 
     await screen.findByText("Alpha 书签");
-    await user.click(screen.getByRole("button", { name: "测" }));
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
     await user.click(screen.getByRole("button", { name: "账号设置" }));
     await user.click(screen.getByRole("tab", { name: "浏览器扩展" }));
     expect(screen.getByRole("link", { name: "下载扩展" }).getAttribute("href")).toBe("/downloads/bookmark-nav-extension.zip");

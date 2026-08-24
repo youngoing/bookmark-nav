@@ -71,13 +71,17 @@ export const bookmarkPageResponse = z.object({
 });
 export type BookmarkPageResponse = z.infer<typeof bookmarkPageResponse>;
 
+export const iconLibrary = z.enum(["lucide", "emoji", "custom"]);
+export type IconLibrary = z.infer<typeof iconLibrary>;
+
 export const folderCreateInput = z.object({
   name: z.string().trim().min(1).max(40),
-  icon: z.string().trim().min(1).max(32).default("Folder"),
+  iconLibrary: iconLibrary.default("lucide"),
+  iconName: z.string().trim().min(1).max(32).default("Folder"),
 });
 export const folderUpdateInput = folderCreateInput
   .partial()
-  .refine((value) => value.name !== undefined || value.icon !== undefined, {
+  .refine((value) => value.name !== undefined || value.iconLibrary !== undefined || value.iconName !== undefined, {
     message: "At least one folder field is required",
   });
 export const folderResponse = folderCreateInput.extend({
@@ -94,7 +98,8 @@ export type Folder = z.infer<typeof folderResponse>;
 export const tagCreateInput = z.object({
   name: z.string().trim().min(1).max(30),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-  icon: z.string().trim().min(1).max(32).default("Tag"),
+  iconLibrary: iconLibrary.default("lucide"),
+  iconName: z.string().trim().min(1).max(32).default("Tag"),
   parentId: z.string().nullable().default(null),
 });
 export const tagUpdateInput = tagCreateInput
@@ -103,7 +108,8 @@ export const tagUpdateInput = tagCreateInput
     (value) =>
       value.name !== undefined ||
       value.color !== undefined ||
-      value.icon !== undefined ||
+      value.iconLibrary !== undefined ||
+      value.iconName !== undefined ||
       value.parentId !== undefined,
     { message: "At least one tag field is required" },
   );
@@ -114,12 +120,13 @@ export const tagResponse = tagCreateInput.extend({
   count: z.number().int().nonnegative(),
   createdAt: z.string(),
   updatedAt: z.string(),
-}).extend({ icon: z.string().trim().min(1).max(32).optional() });
+});
 export const tagOptionResponse = tagCreateInput
   .pick({
     name: true,
     color: true,
-    icon: true,
+    iconLibrary: true,
+    iconName: true,
     parentId: true,
   })
   .extend({
