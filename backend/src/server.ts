@@ -272,9 +272,11 @@ async function handleRest(
         ? 200
         : result.error.code === "SESSION_INVALID"
           ? 401
-          : result.error.code === "ACCOUNT_NOT_FOUND"
-            ? 404
-            : 400,
+        : result.error.code === "ACCOUNT_NOT_FOUND"
+          ? 404
+          : result.error.code === "DEMO_ACCOUNT_READ_ONLY"
+            ? 403
+          : 400,
       result.ok
         ? ({ user: result.value } as JsonValue)
         : { error: result.error.message, code: result.error.code },

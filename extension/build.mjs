@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 const extensionDir = import.meta.dirname;
 const distDir = resolve(extensionDir, "dist");
-const files = ["manifest.json", "popup.html", "popup.js"];
+const files = ["manifest.json", "popup.html", "popup.js", "icon.svg"];
 
 function crc32(buffer) {
   let crc = 0xffffffff;

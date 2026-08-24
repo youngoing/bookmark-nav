@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title>bookmark-nav</title>
+  <rect width="128" height="128" rx="28" fill="#536dfe"/>
+  <path d="M39 25.5h50v76L64 86 39 101.5v-76Z" fill="#fff"/>
+  <path d="M51 42h26M51 55h17" stroke="#536dfe" stroke-width="7" stroke-linecap="round"/>
+  <path d="M76 78h13m-6.5-6.5V85" stroke="#bfc8ff" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="89" cy="78" r="5" fill="#bfc8ff"/>
+</svg>

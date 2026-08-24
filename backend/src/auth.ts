@@ -47,6 +47,7 @@ export type AuthenticationError = {
     | "INVALID_CREDENTIALS"
     | "ACCOUNT_NOT_FOUND"
     | "PASSWORD_REQUIRED"
+    | "DEMO_ACCOUNT_READ_ONLY"
     | "PASSWORD_HASH_FAILED";
   message: string;
 };
@@ -101,6 +102,7 @@ function publicUser(user: UserDocument): UserResponse {
     id: user.id,
     email: user.email,
     name: user.name,
+    passwordConfigured: !user.passwordHash.startsWith("google:"),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -326,7 +328,7 @@ export async function authenticateGoogle(
       email,
       name,
       // Google accounts authenticate through OAuth, never through this password hash.
-      passwordHash: `google:${randomBytes(32).toString("hex")}`,
+      passwordHash: "google:unconfigured",
       createdAt: now,
       updatedAt: now,
     };
@@ -453,14 +455,18 @@ export async function updateAccount(
   const parsedDocument = parseUser(document);
   if (!parsedDocument.ok) return parsedDocument;
   const user = parsedDocument.value;
+  const isDemoAccount = user.id === "test-user" || user.email === "test@bookmark-nav.local";
+  if (isDemoAccount && input.newPassword)
+    return failure({ code: "DEMO_ACCOUNT_READ_ONLY", message: "Demo 测试账号不能修改密码" });
   let passwordHash = user.passwordHash;
   if (input.newPassword) {
-    if (!input.currentPassword)
+    const passwordConfigured = !user.passwordHash.startsWith("google:");
+    if (passwordConfigured && !input.currentPassword)
       return failure({
         code: "PASSWORD_REQUIRED",
         message: "修改密码需要输入当前密码",
       });
-    if (!(await verifyPassword(input.currentPassword, user.passwordHash)))
+    if (passwordConfigured && !(await verifyPassword(input.currentPassword!, user.passwordHash)))
       return failure({
         code: "INVALID_CREDENTIALS",
         message: "当前密码不正确",

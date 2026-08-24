@@ -134,6 +134,7 @@ export const userResponse = z.object({
   id: z.string(),
   email: z.string().email(),
   name: z.string(),
+  passwordConfigured: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
