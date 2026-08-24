@@ -92,6 +92,7 @@ async function initializeCollection<T extends Document>(
   collection: Collection<T>,
   seeds: readonly OptionalUnlessRequiredId<T>[],
   resetOnSchemaMismatch = false,
+  migrateValidatorOnSchemaMismatch = false,
 ): Promise<void> {
   let info = await getCollectionInfo(database, name);
   if (info && !hasExpectedValidator(info, validator) && resetOnSchemaMismatch) {
@@ -105,7 +106,8 @@ async function initializeCollection<T extends Document>(
       validationAction: "error",
     });
   } else if (!hasExpectedValidator(info, validator)) {
-    throw new Error(`Collection ${name} has an unexpected immutable schema`);
+    if (!migrateValidatorOnSchemaMismatch) throw new Error(`Collection ${name} has an unexpected immutable schema`);
+    await database.command({ collMod: name, validator, validationLevel: "strict", validationAction: "error" });
   }
   for (const index of indexes) await collection.createIndex(index.key, index);
   if ((await collection.countDocuments()) === 0 && seeds.length)
@@ -129,6 +131,7 @@ export async function initializeDatabase(): Promise<void> {
     BOOKMARKS_INDEXES,
     getBookmarksCollectionFromDatabase(database),
     SEED_BOOKMARKS,
+    false,
     true,
   );
   await initializeCollection<FolderDocument>(
@@ -147,6 +150,7 @@ export async function initializeDatabase(): Promise<void> {
     TAGS_INDEXES,
     getTagsCollectionFromDatabase(database),
     SEED_TAGS,
+    false,
     true,
   );
   await initializeCollection<SiteDocument>(

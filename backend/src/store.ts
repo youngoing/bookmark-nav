@@ -297,11 +297,12 @@ export async function listTagOptions(ownerId: string): Promise<TagOption[]> {
   const documents = await (await getTagsCollection())
     .find({ ownerId })
     .sort({ parentId: 1, createdAt: 1 })
-    .project<Pick<TagDocument, "id" | "name" | "color" | "parentId">>({
+    .project<Pick<TagDocument, "id" | "name" | "color" | "icon" | "parentId">>({
       _id: 0,
       id: 1,
       name: 1,
       color: 1,
+      icon: 1,
       parentId: 1,
     })
     .toArray();
@@ -309,6 +310,7 @@ export async function listTagOptions(ownerId: string): Promise<TagOption[]> {
     id: tag.id,
     name: tag.name,
     color: tag.color,
+    icon: tag.icon || "Tag",
     parentId: tag.parentId,
   }));
 }
@@ -403,6 +405,7 @@ export async function createTag(
     ownerId,
     name: input.name,
     color: input.color,
+    icon: input.icon,
     parentId: input.parentId,
     collectionId: null,
     createdAt: now,
@@ -436,7 +439,7 @@ export async function updateTag(
   )
     return failure({ code: "DUPLICATE_NAME", message: "同级下已存在同名标签" });
   const updatedAt = new Date().toISOString();
-  const updated = { name, color: input.color || current.color, parentId };
+  const updated = { name, color: input.color || current.color, icon: input.icon || current.icon || "Tag", parentId };
   await tags.updateOne({ id, ownerId }, { $set: { ...updated, updatedAt } });
   const count = await (
     await getBookmarksCollection()
@@ -886,6 +889,7 @@ export async function saveSharedCollection(
     const created = await createTag(ownerId, {
       name: collection.name,
       color: "#536dfe",
+      icon: "Tag",
       parentId: null,
     });
     if (!created.ok) return created;

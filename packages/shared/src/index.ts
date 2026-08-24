@@ -94,6 +94,7 @@ export type Folder = z.infer<typeof folderResponse>;
 export const tagCreateInput = z.object({
   name: z.string().trim().min(1).max(30),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  icon: z.string().trim().min(1).max(32).default("Tag"),
   parentId: z.string().nullable().default(null),
 });
 export const tagUpdateInput = tagCreateInput
@@ -112,11 +113,12 @@ export const tagResponse = tagCreateInput.extend({
   count: z.number().int().nonnegative(),
   createdAt: z.string(),
   updatedAt: z.string(),
-});
+}).extend({ icon: z.string().trim().min(1).max(32).optional() });
 export const tagOptionResponse = tagCreateInput
   .pick({
     name: true,
     color: true,
+    icon: true,
     parentId: true,
   })
   .extend({
