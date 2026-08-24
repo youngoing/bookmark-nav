@@ -45,6 +45,7 @@ export type SessionError = { code: "SESSION_INVALID"; message: string };
 export type AuthenticationError = {
   code:
     | "INVALID_CREDENTIALS"
+    | "PASSWORD_MISMATCH"
     | "ACCOUNT_NOT_FOUND"
     | "PASSWORD_REQUIRED"
     | "DEMO_ACCOUNT_READ_ONLY"
@@ -98,11 +99,13 @@ export function verifySession(
 }
 
 function publicUser(user: UserDocument): UserResponse {
+  const passwordConfigured = !user.passwordHash.startsWith("google:");
   return {
     id: user.id,
     email: user.email,
     name: user.name,
-    passwordConfigured: !user.passwordHash.startsWith("google:"),
+    passwordConfigured,
+    passwordChangeRequired: !passwordConfigured,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -458,9 +461,19 @@ export async function updateAccount(
   const isDemoAccount = user.id === "test-user" || user.email === "test@bookmark-nav.local";
   if (isDemoAccount && input.newPassword)
     return failure({ code: "DEMO_ACCOUNT_READ_ONLY", message: "Demo 测试账号不能修改密码" });
+  const passwordConfigured = !user.passwordHash.startsWith("google:");
+  if (!passwordConfigured && !input.newPassword)
+    return failure({
+      code: "PASSWORD_REQUIRED",
+      message: "首次使用请先设置密码",
+    });
   let passwordHash = user.passwordHash;
   if (input.newPassword) {
-    const passwordConfigured = !user.passwordHash.startsWith("google:");
+    if (input.newPassword !== input.confirmPassword)
+      return failure({
+        code: "PASSWORD_MISMATCH",
+        message: "两次输入的新密码不一致",
+      });
     if (passwordConfigured && !input.currentPassword)
       return failure({
         code: "PASSWORD_REQUIRED",

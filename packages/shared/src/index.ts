@@ -144,6 +144,7 @@ export const userResponse = z.object({
   email: z.string().email(),
   name: z.string(),
   passwordConfigured: z.boolean().optional(),
+  passwordChangeRequired: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -161,10 +162,15 @@ export const accountUpdateInput = z
     name: z.string().trim().min(1).max(60).optional(),
     currentPassword: z.string().min(8).max(128).optional(),
     newPassword: z.string().min(8).max(128).optional(),
+    confirmPassword: z.string().min(8).max(128).optional(),
   })
   .refine(
     (value) => value.name !== undefined || value.newPassword !== undefined,
     { message: "At least one account field is required" },
+  )
+  .refine(
+    (value) => value.newPassword === undefined || value.newPassword === value.confirmPassword,
+    { message: "两次输入的新密码不一致" },
   );
 export type UserResponse = z.infer<typeof userResponse>;
 export type LoginInput = z.infer<typeof loginInput>;
