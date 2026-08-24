@@ -20,7 +20,7 @@ export const BOOKMARKS_VALIDATOR: Document = {
       url: { bsonType: "string", pattern: "^https?://" },
       description: { bsonType: "string" },
       domain: { bsonType: "string" },
-      favicon: { bsonType: "string", pattern: "^https?://" },
+      favicon: { bsonType: "string", pattern: "^(https?://|data:image/)" },
       folderId: { bsonType: ["string", "null"] },
       tags: { bsonType: "array", items: { bsonType: "string" } },
       clicks: { bsonType: "int", minimum: 0 },

@@ -16,6 +16,7 @@ export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
     z.record(jsonValueSchema),
   ]),
 );
+export const faviconSchema = z.string().regex(/^(https?:\/\/|data:image\/)/);
 
 export const bookmarkCreateInput = z.object({
   url: z.string().url(),
@@ -46,7 +47,7 @@ export const bookmarkResponse = bookmarkCreateInput.extend({
   publicationId: z.string().nullable(),
   id: z.string(),
   domain: z.string(),
-  favicon: z.string().url(),
+  favicon: faviconSchema,
   clicks: z.number().int().nonnegative(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -207,7 +208,7 @@ export const siteResponse = siteCreateInput.extend({
   id: z.string(),
   ownerId: z.string(),
   domain: z.string(),
-  favicon: z.string().url(),
+  favicon: faviconSchema,
   count: z.number().int().nonnegative(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -223,7 +224,7 @@ export const publicationResponse = z.object({
   title: z.string(),
   description: z.string(),
   domain: z.string(),
-  favicon: z.string().url(),
+  favicon: faviconSchema,
   publishedAt: z.string(),
 });
 export type Publication = z.infer<typeof publicationResponse>;
@@ -243,7 +244,7 @@ export const sharedCollectionItemResponse = z.object({
   title: z.string(),
   description: z.string(),
   domain: z.string(),
-  favicon: z.string().url(),
+  favicon: faviconSchema,
   sortOrder: z.number().int().nonnegative(),
 });
 export const sharedCollectionResponse = z.object({

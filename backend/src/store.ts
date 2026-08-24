@@ -65,6 +65,40 @@ export type ManagementError = {
   message: string;
 };
 
+const faviconCache = new Map<string, Promise<string>>();
+
+function fallbackFavicon(hostname: string): string {
+  const letter = (hostname.replace(/^www\./, "")[0] || "?").toUpperCase();
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="14" fill="#536dfe"/><text x="32" y="42" text-anchor="middle" font-family="Arial,sans-serif" font-size="30" fill="white">${letter}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+async function resolveFavicon(url: URL): Promise<string> {
+  const key = url.hostname.toLowerCase();
+  const existing = faviconCache.get(key);
+  if (existing) return existing;
+  const pending = (async () => {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      const response = await fetch(new URL("/favicon.ico", url.origin), {
+        headers: { "user-agent": "bookmark-nav favicon fetcher" },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      const contentType = response.headers.get("content-type")?.split(";", 1)[0] || "";
+      if (!response.ok || !contentType.startsWith("image/") || Number(response.headers.get("content-length") || 0) > 262144) return fallbackFavicon(url.hostname);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!bytes.length || bytes.length > 262144) return fallbackFavicon(url.hostname);
+      return `data:${contentType};base64,${Buffer.from(bytes).toString("base64")}`;
+    } catch {
+      return fallbackFavicon(url.hostname);
+    }
+  })();
+  faviconCache.set(key, pending);
+  return pending;
+}
+
 function withoutFolderMongoId(
   document: WithId<FolderDocument>,
 ): FolderDocument {
@@ -226,7 +260,7 @@ export async function listBookmarksPage(
 }
 
 export async function getDashboard(ownerId: string): Promise<DashboardData> {
-  const [bookmarks, folderDocuments, tagDocuments, siteDocuments] =
+  const [rawBookmarks, folderDocuments, tagDocuments, rawSiteDocuments] =
     await Promise.all([
       listBookmarks(ownerId),
       (await getFoldersCollection())
@@ -242,6 +276,16 @@ export async function getDashboard(ownerId: string): Promise<DashboardData> {
         .sort({ name: 1 })
         .toArray(),
     ]);
+  const bookmarksCollection = await getBookmarksCollection();
+  const siteDocuments = await Promise.all(rawSiteDocuments.map(async (site) => {
+    if (!site.favicon.startsWith("https://www.google.com/s2/favicons")) return site;
+    const favicon = await resolveFavicon(new URL(site.homepageUrl));
+    await (await getSitesCollection()).updateOne({ id: site.id, ownerId }, { $set: { favicon } });
+    await bookmarksCollection.updateMany({ ownerId, siteId: site.id }, { $set: { favicon } });
+    return { ...site, favicon };
+  }));
+  const cachedFaviconBySiteId = new Map(siteDocuments.map((site) => [site.id, site.favicon]));
+  const bookmarks = rawBookmarks.map((bookmark) => ({ ...bookmark, favicon: cachedFaviconBySiteId.get(bookmark.siteId) || bookmark.favicon }));
   const siteById = new Map(siteDocuments.map((site) => [site.id, site]));
   const folders: Folder[] = folderDocuments.map((document) => {
     const folder = withoutFolderMongoId(document);
@@ -505,7 +549,7 @@ export async function createSite(
     name: input.name,
     homepageUrl: input.homepageUrl,
     domain,
-    favicon: `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`,
+    favicon: await resolveFavicon(url),
     folderId: input.folderId,
     tags: input.tags,
     createdAt: now,
@@ -538,7 +582,7 @@ export async function updateSite(
     name: input.name || current.name,
     homepageUrl,
     domain,
-    favicon: `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`,
+    favicon: homepageUrl === current.homepageUrl ? current.favicon : await resolveFavicon(url),
     folderId: input.folderId === undefined ? current.folderId : input.folderId,
     tags: input.tags || current.tags,
     updatedAt,
@@ -603,7 +647,7 @@ export async function createBookmark(
       name: domain,
       homepageUrl: url.origin,
       domain,
-      favicon: `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`,
+      favicon: await resolveFavicon(url),
       folderId: input.folderId,
       tags: [],
       createdAt: now,
@@ -621,7 +665,7 @@ export async function createBookmark(
     title: input.title || url.hostname,
     description: input.description || "",
     domain,
-    favicon: `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`,
+    favicon: site.favicon,
     clicks: 0,
     isFavorite: false,
     publicationId: null,

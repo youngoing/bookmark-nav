@@ -176,6 +176,7 @@ export async function initializeDatabase(): Promise<void> {
     SITES_INDEXES,
     getSitesCollectionFromDatabase(database),
     SEED_SITES,
+    false,
     true,
   );
   await initializeCollection<PublicationDocument>(
@@ -185,6 +186,7 @@ export async function initializeDatabase(): Promise<void> {
     PUBLICATIONS_INDEXES,
     getPublicationsCollectionFromDatabase(database),
     SEED_PUBLICATIONS,
+    false,
     true,
   );
   await initializeCollection<SharedCollectionDocument>(

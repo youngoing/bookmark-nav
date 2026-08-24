@@ -17,7 +17,7 @@ export const SITES_VALIDATOR: Document = {
       name: { bsonType: "string" },
       homepageUrl: { bsonType: "string", pattern: "^https?://" },
       domain: { bsonType: "string" },
-      favicon: { bsonType: "string", pattern: "^https?://" },
+      favicon: { bsonType: "string", pattern: "^(https?://|data:image/)" },
       folderId: { bsonType: ["string", "null"] },
       tags: { bsonType: "array", items: { bsonType: "string" } },
       createdAt: { bsonType: "string" },

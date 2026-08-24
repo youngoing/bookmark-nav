@@ -44,7 +44,7 @@ export const PUBLICATIONS_VALIDATOR: Document = {
       title: { bsonType: "string" },
       description: { bsonType: "string" },
       domain: { bsonType: "string" },
-      favicon: { bsonType: "string", pattern: "^https?://" },
+      favicon: { bsonType: "string", pattern: "^(https?://|data:image/)" },
       publishedAt: { bsonType: "string" },
     },
   },
