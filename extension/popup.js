@@ -62,7 +62,8 @@ async function loadWorkspace(endpoint, apiKey) {
     folder.id !== "all" &&
     typeof folder.id === "string" &&
     typeof folder.name === "string" &&
-    typeof folder.icon === "string"
+    typeof folder.iconLibrary === "string" &&
+    typeof folder.iconName === "string"
   );
   selectedTagIds.clear();
   renderTags();
@@ -134,7 +135,7 @@ function renderFolders() {
   for (const folder of folders) {
     const option = document.createElement("option");
     option.value = folder.id;
-    option.textContent = `${folder.icon} ${folder.name}`;
+    option.textContent = `${folder.iconName} ${folder.name}`;
     select.append(option);
   }
 }

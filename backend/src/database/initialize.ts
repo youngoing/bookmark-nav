@@ -127,6 +127,18 @@ async function migrateLegacyIconFields(database: Db, collectionName: string, val
   }
 }
 
+async function migrateLegacyUserFields(database: Db): Promise<void> {
+  const info = await getCollectionInfo(database, USERS_COLLECTION_NAME);
+  if (!info) return;
+  if (info && !hasExpectedValidator(info, USERS_VALIDATOR)) {
+    await database.command({ collMod: USERS_COLLECTION_NAME, validator: USERS_VALIDATOR, validationLevel: "strict", validationAction: "error" });
+  }
+  await database.collection(USERS_COLLECTION_NAME).updateMany(
+    {},
+    { $unset: { passwordChangeRequired: "", iconLibrary: "", iconName: "" } },
+  );
+}
+
 export async function initializeDatabase(): Promise<void> {
   const database = await getDatabase();
   await migrateLegacyIconFields(database, FOLDERS_COLLECTION_NAME, FOLDERS_VALIDATOR, "Folder");
@@ -198,6 +210,7 @@ export async function initializeDatabase(): Promise<void> {
     SEED_SHARED_COLLECTIONS,
     true,
   );
+  await migrateLegacyUserFields(database);
   await initializeCollection<UserDocument>(
     database,
     USERS_COLLECTION_NAME,
