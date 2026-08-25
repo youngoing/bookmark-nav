@@ -66,6 +66,31 @@ describe("书签工作台用户流程", () => {
     expect(await screen.findByText("Alpha 书签")).toBeTruthy();
   });
 
+  it("用户可以搜索标签、切换标签并清除筛选", async () => {
+    const pageQueries: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.pathname === "/api/auth/session") return json({ user: account });
+      if (url.pathname === "/api/v1/dashboard") return json(dashboard);
+      if (url.pathname === "/api/v1/bookmarks/page") {
+        pageQueries.push(url.search);
+        return json({ items: [alpha], page: 1, pageSize: 9, total: 1, totalPages: 1 });
+      }
+      return json({ error: "Not found" }, 404);
+    }));
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    expect(await screen.findByText("Alpha 书签")).toBeTruthy();
+    const tagSearch = screen.getByRole("textbox", { name: "搜索标签" });
+    await user.type(tagSearch, "前");
+    await user.click(screen.getByRole("button", { name: /前端/ }));
+    expect(await screen.findByRole("heading", { name: "#前端" })).toBeTruthy();
+    expect(pageQueries.some((query) => query.includes("tagId=frontend"))).toBe(true);
+    await user.click(screen.getByRole("button", { name: "清除标签筛选" }));
+    expect(await screen.findByRole("heading", { name: "全部书签" })).toBeTruthy();
+  });
+
   it("未登录用户使用初始化测试账号后进入工作台", async () => {
     let loggedIn = false;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
