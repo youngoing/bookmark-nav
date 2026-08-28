@@ -7,7 +7,7 @@ export default function DemoPage() {
 
   useEffect(() => {
     let active = true;
-    void fetch("/api/auth/login", {
+    void fetch("/api/auth/sign-in/email", {
       method: "POST",
       headers: { "content-type": "application/json" },
       credentials: "include",

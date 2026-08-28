@@ -9,16 +9,28 @@ if (!outDir) {
 }
 
 const srcPkg = JSON.parse(readFileSync(resolve(backendDir, "package.json"), "utf-8"));
+const externalRuntimeDependencies = [
+  "@trpc/server",
+  "dotenv",
+  "jose",
+  "mongodb",
+  "undici",
+];
 const prodPkg = {
   name: srcPkg.name,
   version: srcPkg.version,
   private: true,
   type: srcPkg.type,
   scripts: { start: "node dist/server.js" },
-  dependencies: { ...srcPkg.dependencies },
+  dependencies: Object.fromEntries(
+    externalRuntimeDependencies.map((name) => {
+      const version = srcPkg.dependencies[name];
+      if (!version)
+        throw new Error(`Missing external runtime dependency: ${name}`);
+      return [name, version];
+    }),
+  ),
   engines: srcPkg.engines,
 };
-
-delete prodPkg.dependencies["@loomark/shared"];
 
 writeFileSync(resolve(outDir, "package.json"), JSON.stringify(prodPkg, null, 2));

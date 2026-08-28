@@ -349,7 +349,7 @@ export default function Home() {
   }
 
   async function logout(): Promise<void> {
-    const result = await fromPromise(apiFetch("/api/auth/logout", { method: "POST" }), () => ({ code: "NETWORK_ERROR", message: "无法退出登录" }));
+    const result = await fromPromise(apiFetch("/api/auth/sign-out", { method: "POST" }), () => ({ code: "NETWORK_ERROR", message: "无法退出登录" }));
     if (result.ok) { setUser(null); setShowMenu(false); setData(initial); setPageInfo({ items: [], page: 1, pageSize: 9, total: 0, totalPages: 0 }); }
   }
 
@@ -698,7 +698,7 @@ function LoginScreen({ onLoggedIn }: { onLoggedIn: (user: UserResponse) => void 
     event.preventDefault();
     setSubmitting(true);
     setError("");
-    const responseResult = await fromPromise(apiFetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password }) }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
+    const responseResult = await fromPromise(apiFetch("/api/auth/sign-in/email", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password }) }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
     if (!responseResult.ok) { setError(responseResult.error.message); setSubmitting(false); return; }
     const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
     if (!responseResult.value.ok || !bodyResult.ok) { setError(bodyResult.ok && typeof bodyResult.value === "object" && bodyResult.value !== null && "error" in bodyResult.value && typeof bodyResult.value.error === "string" ? bodyResult.value.error : "邮箱或密码不正确"); setSubmitting(false); return; }

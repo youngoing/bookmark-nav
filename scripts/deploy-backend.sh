@@ -90,6 +90,15 @@ stage_artifacts() {
   local out_dir="$1"
   mkdir -p "$out_dir"
   node "$BACKEND_DIR/scripts/generate-prod-package-json.mjs" "$out_dir"
+  (
+    cd "$out_dir"
+    npm install --package-lock-only --omit=dev --omit=optional --ignore-scripts --no-audit --no-fund
+    npm ci --omit=dev --omit=optional --ignore-scripts --no-audit --no-fund
+  )
+  if find "$out_dir/node_modules" -name '*.node' -print -quit | grep -q .; then
+    echo "ERROR: Backend runtime dependencies contain native binaries and cannot be deployed cross-platform." >&2
+    return 1
+  fi
   cp "$BACKEND_DIR/.env" "$out_dir/.env"
   cp "$BACKEND_DIR/ecosystem.config.cjs" "$out_dir/ecosystem.config.cjs"
   rm -rf "$out_dir/dist"
@@ -118,27 +127,29 @@ run_pm2_local() {
 
 deploy_local() {
   local target="$TARGET_DIR"
+  local incoming="${target}.incoming"
+  local previous="${target}.previous"
 
-  echo "==> Preparing deploy directory: $target"
-  if ! mkdir -p "$target" 2>/dev/null; then
+  echo "==> Preparing deploy directory: $incoming"
+  if ! mkdir -p "$(dirname "$target")" 2>/dev/null; then
     echo "ERROR: Cannot create $target. Run with sudo or set DEPLOY_HOST for remote deploy." >&2
     exit 1
   fi
 
-  stage_artifacts "$target"
+  rm -rf "$incoming"
+  stage_artifacts "$incoming"
 
-  echo "==> Installing production dependencies in $target..."
-  if [ -n "$PNPM_CMD" ]; then
-    (cd "$target" && $PNPM_CMD install --prod)
-  elif command -v npm >/dev/null 2>&1; then
-    (cd "$target" && npm install --omit=dev)
-  else
-    echo "ERROR: pnpm or npm is required to install dependencies." >&2
+  echo "==> Switching release and deploying with PM2..."
+  rm -rf "$previous"
+  [ -d "$target" ] && mv "$target" "$previous"
+  mv "$incoming" "$target"
+  if ! run_pm2_local "$target"; then
+    rm -rf "$target"
+    [ -d "$previous" ] && mv "$previous" "$target"
+    [ -d "$target" ] && run_pm2_local "$target"
     exit 1
   fi
-
-  echo "==> Deploying with PM2..."
-  run_pm2_local "$target"
+  rm -rf "$previous"
 
   echo "==> Backend deployed to $target"
 }
@@ -203,6 +214,7 @@ deploy_remote() {
   local user="$DEPLOY_USER"
   local host="$DEPLOY_HOST"
   local remote_dir="$TARGET_DIR"
+  local remote_archive="${remote_dir}.deploy.tar.gz"
 
   local tmp_dir=""
   local archive=""
@@ -224,28 +236,69 @@ deploy_remote() {
   echo "==> Creating deploy archive..."
   create_archive "$tmp_dir" "$archive"
 
-  echo "==> Creating remote directory..."
-  run_remote "mkdir -p $remote_dir"
+  echo "==> Preparing remote release path..."
+  run_remote "mkdir -p $(dirname "$remote_dir")"
 
-  echo "==> Uploading build archive to $user@$host:$remote_dir ..."
-  upload_archive "$archive" "$user@$host:$remote_dir/deploy.tar.gz"
+  echo "==> Uploading build archive to $user@$host:$remote_archive ..."
+  upload_archive "$archive" "$user@$host:$remote_archive"
 
-  echo "==> Installing and restarting on remote..."
+  echo "==> Verifying and restarting on remote..."
   run_remote "
     set -e
-    cd $remote_dir
-    tar -xzf deploy.tar.gz
-    rm deploy.tar.gz
-    if command -v pnpm >/dev/null 2>&1; then
-      pnpm install --prod
-    else
-      npm install --omit=dev
-    fi
+    incoming=${remote_dir}.incoming
+    previous=${remote_dir}.previous
+    rm -rf \"\$incoming\"
+    mkdir -p \"\$incoming\"
+    tar -xzf $remote_archive -C \"\$incoming\"
+    rm -f $remote_archive
+    cd \"\$incoming\"
+    node -e 'for (const name of [\"@trpc/server\", \"dotenv\", \"jose\", \"mongodb\", \"undici\"]) require.resolve(name)'
+    cd /
+    rm -rf \"\$previous\"
+    if [ -d $remote_dir ]; then mv $remote_dir \"\$previous\"; fi
+    mv \"\$incoming\" $remote_dir
     if command -v pm2 >/dev/null 2>&1; then
-      pm2 startOrRestart ecosystem.config.cjs --env production --update-env
+      if ! pm2 startOrRestart $remote_dir/ecosystem.config.cjs --env production --update-env; then
+        rm -rf $remote_dir
+        if [ -d \"\$previous\" ]; then mv \"\$previous\" $remote_dir; fi
+        pm2 startOrRestart $remote_dir/ecosystem.config.cjs --env production --update-env
+        exit 1
+      fi
     else
-      npx pm2 startOrRestart ecosystem.config.cjs --env production --update-env
+      if ! npx --yes pm2 startOrRestart $remote_dir/ecosystem.config.cjs --env production --update-env; then
+        rm -rf $remote_dir
+        if [ -d \"\$previous\" ]; then mv \"\$previous\" $remote_dir; fi
+        npx --yes pm2 startOrRestart $remote_dir/ecosystem.config.cjs --env production --update-env
+        exit 1
+      fi
     fi
+    sleep 3
+    port=\$(awk -F= '\$1 == \"PORT\" { print \$2 }' $remote_dir/.env | tail -n 1)
+    if ! node -e '
+      const http = require(\"node:http\");
+      const request = http.get(
+        \"http://127.0.0.1:\" + (process.argv[1] || \"4000\") + \"/api/auth/session\",
+        (response) => {
+          response.resume();
+          response.on(\"end\", () =>
+            process.exit([200, 401].includes(response.statusCode) ? 0 : 1),
+          );
+        },
+      );
+      request.setTimeout(5000, () => request.destroy());
+      request.on(\"error\", () => process.exit(1));
+    ' \"\$port\"; then
+      echo 'ERROR: Backend health check failed, rolling back.' >&2
+      rm -rf $remote_dir
+      if [ -d \"\$previous\" ]; then mv \"\$previous\" $remote_dir; fi
+      if command -v pm2 >/dev/null 2>&1; then
+        pm2 startOrRestart $remote_dir/ecosystem.config.cjs --env production --update-env
+      else
+        npx --yes pm2 startOrRestart $remote_dir/ecosystem.config.cjs --env production --update-env
+      fi
+      exit 1
+    fi
+    rm -rf \"\$previous\"
   "
 
   echo "==> Backend deployed to $user@$host:$remote_dir"

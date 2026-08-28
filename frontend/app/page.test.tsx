@@ -97,7 +97,7 @@ describe("书签工作台用户流程", () => {
       const url = requestUrl(input);
       if (url.pathname === "/api/auth/session") return loggedIn ? json({ user: account }) : json({ error: "Authentication required" }, 401);
       if (url.pathname === "/api/auth/providers") return json({ google: true, feishu: false });
-      if (url.pathname === "/api/auth/login") { loggedIn = true; return json({ user: account }); }
+      if (url.pathname === "/api/auth/sign-in/email") { loggedIn = true; return json({ user: account }); }
       if (url.pathname === "/api/v1/dashboard") return json(dashboard);
       if (url.pathname === "/api/v1/bookmarks/page") return json({ items: [alpha], page: 1, pageSize: 9, total: 1, totalPages: 1 });
       return json({ error: "Not found" }, 404);
