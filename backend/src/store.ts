@@ -31,27 +31,27 @@ import {
 import {
   folderDocumentSchema,
   getFoldersCollection,
-  type FolderDocument,
+  type DbFolder,
 } from "./database/collections/folders";
 import {
   getPublicationsCollection,
   publicationDocumentSchema,
-  type PublicationDocument,
+  type DbPublication,
 } from "./database/collections/publications";
 import {
   getTagsCollection,
   tagDocumentSchema,
-  type TagDocument,
+  type DbTag,
 } from "./database/collections/tags";
 import {
   getSitesCollection,
   siteDocumentSchema,
-  type SiteDocument,
+  type DbSite,
 } from "./database/collections/sites";
 import {
   getSharedCollectionsCollection,
   sharedCollectionDocumentSchema,
-  type SharedCollectionDocument,
+  type DbSharedCollection,
 } from "./database/collections/shared-collections";
 
 export type ManagementError = {
@@ -100,31 +100,31 @@ async function resolveFavicon(url: URL): Promise<string> {
 }
 
 function withoutFolderMongoId(
-  document: WithId<FolderDocument>,
-): FolderDocument {
+  document: WithId<DbFolder>,
+): DbFolder {
   const { _id: _, ...value } = document;
   return folderDocumentSchema.parse(value);
 }
 
-function withoutTagMongoId(document: WithId<TagDocument>): TagDocument {
+function withoutTagMongoId(document: WithId<DbTag>): DbTag {
   const { _id: _, ...value } = document;
   return tagDocumentSchema.parse(value);
 }
 
-function withoutSiteMongoId(document: WithId<SiteDocument>): SiteDocument {
+function withoutSiteMongoId(document: WithId<DbSite>): DbSite {
   const { _id: _, ...value } = document;
   return siteDocumentSchema.parse(value);
 }
 
 function withoutSharedCollectionMongoId(
-  document: WithId<SharedCollectionDocument>,
-): SharedCollectionDocument {
+  document: WithId<DbSharedCollection>,
+): DbSharedCollection {
   const { _id: _, ...value } = document;
   return sharedCollectionDocumentSchema.parse(value);
 }
 
 function publicSharedCollection(
-  document: SharedCollectionDocument,
+  document: DbSharedCollection,
 ): SharedCollection {
   return {
     id: document.id,
@@ -147,13 +147,13 @@ function withoutBookmarkMongoId(
 }
 
 function withoutPublicationMongoId(
-  document: WithId<PublicationDocument>,
-): PublicationDocument {
+  document: WithId<DbPublication>,
+): DbPublication {
   const { _id: _, ...value } = document;
   return publicationDocumentSchema.parse(value);
 }
 
-function publicPublication(document: PublicationDocument): Publication {
+function publicPublication(document: DbPublication): Publication {
   return {
     id: document.id,
     sourceBookmarkId: document.sourceBookmarkId,
@@ -342,7 +342,7 @@ export async function listTagOptions(ownerId: string): Promise<TagOption[]> {
   const documents = await (await getTagsCollection())
     .find({ ownerId })
     .sort({ parentId: 1, createdAt: 1 })
-    .project<Pick<TagDocument, "id" | "name" | "color" | "iconLibrary" | "iconName" | "parentId">>({
+    .project<Pick<DbTag, "id" | "name" | "color" | "iconLibrary" | "iconName" | "parentId">>({
       _id: 0,
       id: 1,
       name: 1,
@@ -370,7 +370,7 @@ export async function createFolder(
   if ((await folders.countDocuments({ ownerId, name: input.name })) > 0)
     return failure({ code: "DUPLICATE_NAME", message: "已存在同名目录" });
   const now = new Date().toISOString();
-  const document: FolderDocument = {
+  const document: DbFolder = {
     id: randomUUID(),
     ownerId,
     name: input.name,
@@ -449,7 +449,7 @@ export async function createTag(
   )
     return failure({ code: "DUPLICATE_NAME", message: "同级下已存在同名标签" });
   const now = new Date().toISOString();
-  const document: TagDocument = {
+  const document: DbTag = {
     id: randomUUID(),
     ownerId,
     name: input.name,
@@ -543,7 +543,7 @@ export async function createSite(
   if (await sites.findOne({ ownerId, domain }))
     return failure({ code: "DUPLICATE_NAME", message: "该域名的网站已存在" });
   const now = new Date().toISOString();
-  const document: SiteDocument = {
+  const document: DbSite = {
     id: randomUUID(),
     ownerId,
     name: input.name,
@@ -631,7 +631,7 @@ export async function createBookmark(
   const url = new URL(input.url);
   const domain = url.hostname.replace(/^www\./, "");
   const sites = await getSitesCollection();
-  let site: SiteDocument | WithId<SiteDocument> | null = input.siteId
+  let site: DbSite | WithId<DbSite> | null = input.siteId
     ? await sites.findOne({ id: input.siteId, ownerId })
     : await sites.findOne({ ownerId, domain });
   if (input.siteId && !site)
@@ -641,7 +641,7 @@ export async function createBookmark(
     });
   if (!site) {
     const now = new Date().toISOString();
-    const document: SiteDocument = {
+    const document: DbSite = {
       id: randomUUID(),
       ownerId,
       name: domain,
@@ -750,7 +750,7 @@ export async function publishBookmark(
     if (existing)
       return success(publicPublication(withoutPublicationMongoId(existing)));
   }
-  const document: PublicationDocument = {
+  const document: DbPublication = {
     id: randomUUID(),
     sourceBookmarkId: bookmark.id,
     ownerId,
@@ -855,7 +855,7 @@ export async function publishTagCollection(
   const existing = tag.collectionId
     ? await collections.findOne({ id: tag.collectionId, ownerId })
     : await collections.findOne({ ownerId, sourceTagId: tagId });
-  const document: SharedCollectionDocument = {
+  const document: DbSharedCollection = {
     id: existing?.id || randomUUID(),
     ownerId,
     sourceTagId: tagId,

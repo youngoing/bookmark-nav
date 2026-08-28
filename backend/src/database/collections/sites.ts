@@ -2,7 +2,7 @@ import type { Collection, Db, Document, IndexDescription } from "mongodb";
 import { siteResponse, type Site } from "@loomark/shared";
 import { getDatabase } from "../../db";
 
-export type SiteDocument = Omit<Site, "count">;
+export type DbSite = Omit<Site, "count">;
 export const siteDocumentSchema = siteResponse.omit({ count: true }).strict();
 export const SITES_COLLECTION_NAME = "sites" as const;
 export const SITES_VALIDATOR: Document = {
@@ -30,6 +30,6 @@ export const SITES_INDEXES: readonly IndexDescription[] = [
   { key: { ownerId: 1, domain: 1 }, name: "sites_owner_domain_unique", unique: true },
   { key: { ownerId: 1, name: 1 }, name: "sites_owner_name" },
 ];
-export const SEED_SITES: readonly SiteDocument[] = [];
-export async function getSitesCollection(): Promise<Collection<SiteDocument>> { return (await getDatabase()).collection<SiteDocument>(SITES_COLLECTION_NAME); }
-export function getSitesCollectionFromDatabase(database: Db): Collection<SiteDocument> { return database.collection<SiteDocument>(SITES_COLLECTION_NAME); }
+export const SEED_SITES: readonly DbSite[] = [];
+export async function getSitesCollection(): Promise<Collection<DbSite>> { return (await getDatabase()).collection<DbSite>(SITES_COLLECTION_NAME); }
+export function getSitesCollectionFromDatabase(database: Db): Collection<DbSite> { return database.collection<DbSite>(SITES_COLLECTION_NAME); }

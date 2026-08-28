@@ -14,7 +14,7 @@ export const sharedCollectionDocumentSchema = z.object({
   publishedAt: z.string(),
   updatedAt: z.string(),
 }).strict();
-export type SharedCollectionDocument = z.infer<typeof sharedCollectionDocumentSchema>;
+export type DbSharedCollection = z.infer<typeof sharedCollectionDocumentSchema>;
 export const SHARED_COLLECTIONS_COLLECTION_NAME = "shared_collections" as const;
 export const SHARED_COLLECTIONS_VALIDATOR: Document = {
   $jsonSchema: {
@@ -40,6 +40,6 @@ export const SHARED_COLLECTIONS_INDEXES: readonly IndexDescription[] = [
   { key: { ownerId: 1, sourceTagId: 1 }, name: "shared_collections_owner_tag_unique", unique: true },
   { key: { updatedAt: -1 }, name: "shared_collections_updated_at" },
 ];
-export const SEED_SHARED_COLLECTIONS: readonly SharedCollectionDocument[] = [];
-export async function getSharedCollectionsCollection(): Promise<Collection<SharedCollectionDocument>> { return (await getDatabase()).collection<SharedCollectionDocument>(SHARED_COLLECTIONS_COLLECTION_NAME); }
-export function getSharedCollectionsCollectionFromDatabase(database: Db): Collection<SharedCollectionDocument> { return database.collection<SharedCollectionDocument>(SHARED_COLLECTIONS_COLLECTION_NAME); }
+export const SEED_SHARED_COLLECTIONS: readonly DbSharedCollection[] = [];
+export async function getSharedCollectionsCollection(): Promise<Collection<DbSharedCollection>> { return (await getDatabase()).collection<DbSharedCollection>(SHARED_COLLECTIONS_COLLECTION_NAME); }
+export function getSharedCollectionsCollectionFromDatabase(database: Db): Collection<DbSharedCollection> { return database.collection<DbSharedCollection>(SHARED_COLLECTIONS_COLLECTION_NAME); }

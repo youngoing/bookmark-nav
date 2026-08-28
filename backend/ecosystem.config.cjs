@@ -7,10 +7,12 @@ module.exports = {
       env_file: "./.env",
       env: {
         NODE_ENV: "production",
+        BETTER_AUTH_URL: "https://youngoing.cn",
         GOOGLE_PROXY_URL: "http://127.0.0.1:7890",
       },
       env_production: {
         NODE_ENV: "production",
+        BETTER_AUTH_URL: "https://youngoing.cn",
         GOOGLE_PROXY_URL: "http://127.0.0.1:7890",
       },
       instances: 1,

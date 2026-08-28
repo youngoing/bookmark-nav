@@ -12,7 +12,7 @@ export const apiKeyDocumentSchema = z.object({
   lastUsedAt: z.string().nullable(),
 }).strict();
 
-export type ApiKeyDocument = z.infer<typeof apiKeyDocumentSchema>;
+export type DbApiKey = z.infer<typeof apiKeyDocumentSchema>;
 export const API_KEYS_COLLECTION_NAME = "api_keys" as const;
 export const API_KEYS_VALIDATOR: Document = {
   $jsonSchema: {
@@ -37,10 +37,10 @@ export const API_KEYS_INDEXES: readonly IndexDescription[] = [
   { key: { ownerId: 1, createdAt: -1 }, name: "api_keys_owner_created_at" },
 ];
 
-export async function getApiKeysCollection(): Promise<Collection<ApiKeyDocument>> {
-  return (await getDatabase()).collection<ApiKeyDocument>(API_KEYS_COLLECTION_NAME);
+export async function getApiKeysCollection(): Promise<Collection<DbApiKey>> {
+  return (await getDatabase()).collection<DbApiKey>(API_KEYS_COLLECTION_NAME);
 }
 
-export function getApiKeysCollectionFromDatabase(database: Db): Collection<ApiKeyDocument> {
-  return database.collection<ApiKeyDocument>(API_KEYS_COLLECTION_NAME);
+export function getApiKeysCollectionFromDatabase(database: Db): Collection<DbApiKey> {
+  return database.collection<DbApiKey>(API_KEYS_COLLECTION_NAME);
 }

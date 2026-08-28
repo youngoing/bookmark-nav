@@ -5,6 +5,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
+import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import {
   accountUpdateInput,
   apiKeyCreateInput,
@@ -15,7 +16,6 @@ import {
   folderUpdateInput,
   fromPromise,
   jsonValueSchema,
-  loginInput,
   siteCreateInput,
   siteUpdateInput,
   sharedCollectionPublishInput,
@@ -25,16 +25,14 @@ import {
   type UserResponse,
 } from "@loomark/shared";
 import {
-  authenticateGoogle,
-  authenticateUser,
   createApiKey,
-  createSession,
   getApiKeyUser,
   getSessionUser,
   listApiKeys,
   revokeApiKey,
   updateAccount,
 } from "./auth";
+import { getAuthProviderAvailability, getBetterAuth } from "./better-auth";
 import { config, configSource } from "./config";
 import { closeDatabase } from "./db";
 import { initializeDatabase } from "./database/initialize";
@@ -67,12 +65,6 @@ import {
   updateTag,
 } from "./store";
 
-function readSessionToken(request: IncomingMessage): string | undefined {
-  return request.headers.cookie?.match(
-    /(?:^|;\s*)bookmark_session=([^;]+)/,
-  )?.[1];
-}
-
 function readBearerToken(request: IncomingMessage): string | undefined {
   const authorization = request.headers.authorization;
   const match = authorization?.match(/^Bearer\s+(.+)$/i);
@@ -83,7 +75,7 @@ const trpcHandler = createHTTPHandler({
   basePath: "/api/trpc/",
   router: appRouter,
   createContext: ({ req }): BackendContext => ({
-    sessionToken: readSessionToken(req),
+    headers: fromNodeHeaders(req.headers),
   }),
 });
 
@@ -101,9 +93,9 @@ async function requireUser(
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<UserResponse | null> {
-  const sessionToken = readSessionToken(request);
-  const result = sessionToken
-    ? await getSessionUser(sessionToken)
+  const session = await getSessionUser(fromNodeHeaders(request.headers));
+  const result = session.ok
+    ? session
     : await getApiKeyUser(readBearerToken(request));
   if (result.ok) return result.value;
   sendJson(response, 401, {
@@ -117,7 +109,7 @@ async function requireSessionUser(
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<UserResponse | null> {
-  const result = await getSessionUser(readSessionToken(request));
+  const result = await getSessionUser(fromNodeHeaders(request.headers));
   if (result.ok) return result.value;
   sendJson(response, 401, {
     error: result.error.message,
@@ -151,93 +143,13 @@ async function handleRest(
   response: ServerResponse,
   url: URL,
 ): Promise<void> {
-  if (request.method === "POST" && url.pathname === "/api/auth/login") {
-    const bodyResult = await fromPromise(readBody(request), () => ({
-      code: "INVALID_JSON",
-      message: "Invalid JSON payload",
-    }));
-    if (!bodyResult.ok) {
-      sendJson(response, 400, { error: bodyResult.error.message });
-      return;
-    }
-    const parsed = loginInput.safeParse(bodyResult.value);
-    if (!parsed.success) {
-      sendJson(response, 400, {
-        error: "请输入有效邮箱和至少 8 位密码",
-        code: "INVALID_LOGIN_INPUT",
-      });
-      return;
-    }
-    const authenticated = await authenticateUser(
-      parsed.data.email,
-      parsed.data.password,
-    );
-    if (!authenticated.ok) {
-      sendJson(response, 401, {
-        error: authenticated.error.message,
-        code: authenticated.error.code,
-      });
-      return;
-    }
-    const token = await createSession(authenticated.value);
-    response.setHeader(
-      "set-cookie",
-      `bookmark_session=${encodeURIComponent(token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; HttpOnly; Secure; SameSite=Lax`,
-    );
-    sendJson(response, 200, { user: authenticated.value, token } as JsonValue);
-    return;
-  }
-
-  if (
-    request.method === "POST" &&
-    url.pathname === "/api/auth/google/callback"
-  ) {
-    const bodyResult = await fromPromise(readBody(request), () => ({
-      code: "INVALID_JSON",
-      message: "Invalid JSON payload",
-    }));
-    if (
-      !bodyResult.ok ||
-      typeof bodyResult.value !== "object" ||
-      bodyResult.value === null ||
-      Array.isArray(bodyResult.value) ||
-      !("code" in bodyResult.value) ||
-      typeof bodyResult.value.code !== "string" ||
-      !bodyResult.value.code
-    ) {
-      sendJson(response, 400, {
-        error: "Google 授权码无效",
-        code: "INVALID_GOOGLE_CODE",
-      });
-      return;
-    }
-    const authenticated = await authenticateGoogle(bodyResult.value.code);
-    if (!authenticated.ok) {
-      const status =
-        authenticated.error.code === "GOOGLE_NOT_CONFIGURED"
-          ? 503
-          : authenticated.error.code === "ACCOUNT_CREATION_FAILED"
-            ? 500
-            : 401;
-      sendJson(response, status, {
-        error: authenticated.error.message,
-        code: authenticated.error.code,
-      });
-      return;
-    }
-    response.setHeader(
-      "set-cookie",
-      `bookmark_session=${encodeURIComponent(authenticated.value.token)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; HttpOnly; Secure; SameSite=Lax`,
-    );
-    sendJson(response, 200, {
-      user: authenticated.value.user,
-      token: authenticated.value.token,
-    } as JsonValue);
+  if (request.method === "GET" && url.pathname === "/api/auth/providers") {
+    sendJson(response, 200, getAuthProviderAvailability());
     return;
   }
 
   if (request.method === "GET" && url.pathname === "/api/auth/session") {
-    const user = await getSessionUser(readSessionToken(request));
+    const user = await getSessionUser(fromNodeHeaders(request.headers));
     sendJson(
       response,
       user.ok ? 200 : 401,
@@ -265,18 +177,21 @@ async function handleRest(
       });
       return;
     }
-    const result = await updateAccount(readSessionToken(request), parsed.data);
+    const result = await updateAccount(
+      fromNodeHeaders(request.headers),
+      parsed.data,
+    );
     sendJson(
       response,
       result.ok
         ? 200
         : result.error.code === "SESSION_INVALID"
           ? 401
-        : result.error.code === "ACCOUNT_NOT_FOUND"
-          ? 404
-          : result.error.code === "DEMO_ACCOUNT_READ_ONLY"
-            ? 403
-          : 400,
+          : result.error.code === "ACCOUNT_NOT_FOUND"
+            ? 404
+            : result.error.code === "DEMO_ACCOUNT_READ_ONLY"
+              ? 403
+              : 400,
       result.ok
         ? ({ user: result.value } as JsonValue)
         : { error: result.error.message, code: result.error.code },
@@ -324,7 +239,9 @@ async function handleRest(
     sendJson(
       response,
       revoked ? 200 : 404,
-      revoked ? { revoked: true } : { error: "API Key 不存在", code: "NOT_FOUND" },
+      revoked
+        ? { revoked: true }
+        : { error: "API Key 不存在", code: "NOT_FOUND" },
     );
     return;
   }
@@ -778,6 +695,26 @@ const server = createServer((request, response) => {
     request.url || "/",
     `http://${request.headers.host || "localhost"}`,
   );
+  if (
+    url.pathname.startsWith("/api/auth/") &&
+    url.pathname !== "/api/auth/session" &&
+    url.pathname !== "/api/auth/providers"
+  ) {
+    void getBetterAuth()
+      .then((auth) => toNodeHandler(auth)(request, response))
+      .catch((error: Error) => {
+        console.error("better auth request failed", {
+          code: "AUTH_INTERNAL_ERROR",
+          message: error.message,
+        });
+        if (!response.headersSent)
+          sendJson(response, 500, {
+            error: "Authentication service unavailable",
+            code: "AUTH_INTERNAL_ERROR",
+          });
+      });
+    return;
+  }
   if (url.pathname.startsWith("/api/trpc")) {
     trpcHandler(request, response);
     return;

@@ -7,10 +7,13 @@ services:
       - "4000:4000"
     environment:
       PORT: 4000
-      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://youngoing.cn/auth/google/callback}
+      FEISHU_LOGIN_ENABLED: ${FEISHU_LOGIN_ENABLED:-false}
+      FEISHU_CLIENT_ID: ${FEISHU_CLIENT_ID:-}
+      FEISHU_CLIENT_SECRET: ${FEISHU_CLIENT_SECRET:-}
       MONGODB_URI: mongodb://mongo:27017
       MONGODB_DB: bookmark_nav
       MONGODB_APP_NAME: bookmark-nav
@@ -26,8 +29,6 @@ services:
       - "3000:3000"
     environment:
       BACKEND_URL: http://backend:4000
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://youngoing.cn/auth/google/callback}
     depends_on:
       backend:
         condition: service_started

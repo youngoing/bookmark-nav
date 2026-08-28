@@ -1,2 +1,5 @@
-import { NextResponse } from "next/server";
-export async function POST() { const response = NextResponse.json({ ok: true }); response.cookies.delete("bookmark_session"); return response; }
+import { proxyBetterAuth } from "../../../../lib/better-auth-proxy";
+
+export function POST(request: Request): Promise<Response> {
+  return proxyBetterAuth(request, "sign-out");
+}

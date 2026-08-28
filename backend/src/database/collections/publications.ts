@@ -16,7 +16,7 @@ export const publicationDocumentSchema = z
     publishedAt: z.string(),
   })
   .strict();
-export type PublicationDocument = z.infer<typeof publicationDocumentSchema>;
+export type DbPublication = z.infer<typeof publicationDocumentSchema>;
 export const PUBLICATIONS_COLLECTION_NAME = "bookmark_publications" as const;
 export const PUBLICATIONS_VALIDATOR: Document = {
   $jsonSchema: {
@@ -62,16 +62,16 @@ export const PUBLICATIONS_INDEXES: readonly IndexDescription[] = [
   },
   { key: { publishedAt: -1 }, name: "publications_published_at" },
 ];
-export const SEED_PUBLICATIONS: readonly PublicationDocument[] = [];
+export const SEED_PUBLICATIONS: readonly DbPublication[] = [];
 export async function getPublicationsCollection(): Promise<
-  Collection<PublicationDocument>
+  Collection<DbPublication>
 > {
-  return (await getDatabase()).collection<PublicationDocument>(
+  return (await getDatabase()).collection<DbPublication>(
     PUBLICATIONS_COLLECTION_NAME,
   );
 }
 export function getPublicationsCollectionFromDatabase(
   database: Db,
-): Collection<PublicationDocument> {
-  return database.collection<PublicationDocument>(PUBLICATIONS_COLLECTION_NAME);
+): Collection<DbPublication> {
+  return database.collection<DbPublication>(PUBLICATIONS_COLLECTION_NAME);
 }

@@ -96,6 +96,7 @@ describe("书签工作台用户流程", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = requestUrl(input);
       if (url.pathname === "/api/auth/session") return loggedIn ? json({ user: account }) : json({ error: "Authentication required" }, 401);
+      if (url.pathname === "/api/auth/providers") return json({ google: true, feishu: false });
       if (url.pathname === "/api/auth/login") { loggedIn = true; return json({ user: account }); }
       if (url.pathname === "/api/v1/dashboard") return json(dashboard);
       if (url.pathname === "/api/v1/bookmarks/page") return json({ items: [alpha], page: 1, pageSize: 9, total: 1, totalPages: 1 });
@@ -105,12 +106,13 @@ describe("书签工作台用户流程", () => {
     renderWorkspace();
 
     expect(await screen.findByRole("heading", { name: "登录" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Google 登录" }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByRole("link", { name: "使用 Google 登录" })).toBeTruthy();
-    const passwordTab = screen.getByRole("tab", { name: "账号密码登录" });
+    expect(screen.getByRole("tab", { name: "第三方登录" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("button", { name: "使用飞书登录" })).toBeNull();
+    expect(screen.getByRole("button", { name: "使用 Google 登录" })).toBeTruthy();
+    const passwordTab = screen.getByRole("tab", { name: "账号密码" });
     await user.click(passwordTab);
     expect(passwordTab.getAttribute("aria-selected")).toBe("true");
-    expect(screen.queryByRole("link", { name: "使用 Google 登录" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "使用 Google 登录" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Demo 尝试" }));
     expect((screen.getByLabelText("邮箱") as HTMLInputElement).value).toBe("test@bookmark-nav.local");
     expect((screen.getByLabelText("密码") as HTMLInputElement).value).toBe("Test123456!");
@@ -118,6 +120,18 @@ describe("书签工作台用户流程", () => {
     expect(await screen.findByText("Alpha 书签")).toBeTruthy();
     expect(screen.getByText("bookmark-nav")).toBeTruthy();
     expect(screen.queryByText("测试账号")).toBeNull();
+  });
+
+  it("仅在后端配置启用后展示飞书登录", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.pathname === "/api/auth/session") return json({ error: "Authentication required" }, 401);
+      if (url.pathname === "/api/auth/providers") return json({ google: true, feishu: true });
+      return json({ error: "Not found" }, 404);
+    }));
+    renderWorkspace();
+
+    expect(await screen.findByRole("button", { name: "使用飞书登录" })).toBeTruthy();
   });
 
   it("用户编辑标签后在导航中看到更新后的名称", async () => {

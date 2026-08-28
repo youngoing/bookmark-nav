@@ -2,7 +2,7 @@ import type { Collection, Db, Document, IndexDescription } from "mongodb";
 import { bookmarkResponse, type BookmarkResponse } from "@loomark/shared";
 import { getDatabase } from "../../db";
 
-export type BookmarkDocument = BookmarkResponse;
+export type DbBookmark = BookmarkResponse;
 export const bookmarkDocumentSchema = bookmarkResponse.strict();
 export const BOOKMARKS_COLLECTION_NAME = "bookmarks" as const;
 
@@ -40,12 +40,12 @@ export const BOOKMARKS_INDEXES: readonly IndexDescription[] = [
   { key: { ownerId: 1, domain: 1 }, name: "bookmarks_owner_domain" },
 ];
 
-export const SEED_BOOKMARKS: readonly BookmarkDocument[] = [];
+export const SEED_BOOKMARKS: readonly DbBookmark[] = [];
 
-export async function getBookmarksCollection(): Promise<Collection<BookmarkDocument>> {
-  return (await getDatabase()).collection<BookmarkDocument>(BOOKMARKS_COLLECTION_NAME);
+export async function getBookmarksCollection(): Promise<Collection<DbBookmark>> {
+  return (await getDatabase()).collection<DbBookmark>(BOOKMARKS_COLLECTION_NAME);
 }
 
-export function getBookmarksCollectionFromDatabase(database: Db): Collection<BookmarkDocument> {
-  return database.collection<BookmarkDocument>(BOOKMARKS_COLLECTION_NAME);
+export function getBookmarksCollectionFromDatabase(database: Db): Collection<DbBookmark> {
+  return database.collection<DbBookmark>(BOOKMARKS_COLLECTION_NAME);
 }

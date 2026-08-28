@@ -7,12 +7,13 @@ import type {
   OptionalUnlessRequiredId,
 } from "mongodb";
 import { getDatabase } from "../db";
+import { initializeDbAuthCollections } from "./collections/auth";
 import {
   API_KEYS_COLLECTION_NAME,
   API_KEYS_INDEXES,
   API_KEYS_VALIDATOR,
   getApiKeysCollectionFromDatabase,
-  type ApiKeyDocument,
+  type DbApiKey,
 } from "./collections/api-keys";
 import {
   BOOKMARKS_COLLECTION_NAME,
@@ -27,7 +28,7 @@ import {
   FOLDERS_VALIDATOR,
   getFoldersCollectionFromDatabase,
   SEED_FOLDERS,
-  type FolderDocument,
+  type DbFolder,
 } from "./collections/folders";
 import {
   PUBLICATIONS_COLLECTION_NAME,
@@ -35,7 +36,7 @@ import {
   PUBLICATIONS_VALIDATOR,
   getPublicationsCollectionFromDatabase,
   SEED_PUBLICATIONS,
-  type PublicationDocument,
+  type DbPublication,
 } from "./collections/publications";
 import {
   TAGS_COLLECTION_NAME,
@@ -43,7 +44,7 @@ import {
   TAGS_VALIDATOR,
   getTagsCollectionFromDatabase,
   SEED_TAGS,
-  type TagDocument,
+  type DbTag,
 } from "./collections/tags";
 import {
   SITES_COLLECTION_NAME,
@@ -51,7 +52,7 @@ import {
   SITES_VALIDATOR,
   getSitesCollectionFromDatabase,
   SEED_SITES,
-  type SiteDocument,
+  type DbSite,
 } from "./collections/sites";
 import {
   SHARED_COLLECTIONS_COLLECTION_NAME,
@@ -59,16 +60,8 @@ import {
   SHARED_COLLECTIONS_VALIDATOR,
   getSharedCollectionsCollectionFromDatabase,
   SEED_SHARED_COLLECTIONS,
-  type SharedCollectionDocument,
+  type DbSharedCollection,
 } from "./collections/shared-collections";
-import {
-  USERS_COLLECTION_NAME,
-  USERS_INDEXES,
-  USERS_VALIDATOR,
-  getUsersCollectionFromDatabase,
-  SEED_USERS,
-  type UserDocument,
-} from "./collections/users";
 
 async function getCollectionInfo(
   database: Db,
@@ -106,44 +99,70 @@ async function initializeCollection<T extends Document>(
       validationAction: "error",
     });
   } else if (!hasExpectedValidator(info, validator)) {
-    if (!migrateValidatorOnSchemaMismatch) throw new Error(`Collection ${name} has an unexpected immutable schema`);
-    await database.command({ collMod: name, validator, validationLevel: "strict", validationAction: "error" });
+    if (!migrateValidatorOnSchemaMismatch)
+      throw new Error(`Collection ${name} has an unexpected immutable schema`);
+    await database.command({
+      collMod: name,
+      validator,
+      validationLevel: "strict",
+      validationAction: "error",
+    });
   }
   for (const index of indexes) await collection.createIndex(index.key, index);
   if ((await collection.countDocuments()) === 0 && seeds.length)
     await collection.insertMany([...seeds]);
 }
 
-async function migrateLegacyIconFields(database: Db, collectionName: string, validator: Document, fallback: string): Promise<void> {
+async function migrateLegacyIconFields(
+  database: Db,
+  collectionName: string,
+  validator: Document,
+  fallback: string,
+): Promise<void> {
   const info = await getCollectionInfo(database, collectionName);
   if (info && !hasExpectedValidator(info, validator)) {
-    await database.command({ collMod: collectionName, validator, validationLevel: "strict", validationAction: "error" });
+    await database.command({
+      collMod: collectionName,
+      validator,
+      validationLevel: "strict",
+      validationAction: "error",
+    });
   }
-  const collection = database.collection<{ _id: unknown; icon?: unknown }>(collectionName);
-  const legacyDocuments = await collection.find({ icon: { $exists: true } }).project({ _id: 1, icon: 1 }).toArray();
-  for (const document of legacyDocuments) {
-    const iconName = typeof document.icon === "string" && document.icon.trim() ? document.icon.trim() : fallback;
-    await collection.updateOne({ _id: document._id }, { $set: { iconLibrary: "lucide", iconName }, $unset: { icon: "" } });
-  }
-}
-
-async function migrateLegacyUserFields(database: Db): Promise<void> {
-  const info = await getCollectionInfo(database, USERS_COLLECTION_NAME);
-  if (!info) return;
-  if (info && !hasExpectedValidator(info, USERS_VALIDATOR)) {
-    await database.command({ collMod: USERS_COLLECTION_NAME, validator: USERS_VALIDATOR, validationLevel: "strict", validationAction: "error" });
-  }
-  await database.collection(USERS_COLLECTION_NAME).updateMany(
-    {},
-    { $unset: { passwordChangeRequired: "", iconLibrary: "", iconName: "" } },
+  const collection = database.collection<{ _id: unknown; icon?: unknown }>(
+    collectionName,
   );
+  const legacyDocuments = await collection
+    .find({ icon: { $exists: true } })
+    .project({ _id: 1, icon: 1 })
+    .toArray();
+  for (const document of legacyDocuments) {
+    const iconName =
+      typeof document.icon === "string" && document.icon.trim()
+        ? document.icon.trim()
+        : fallback;
+    await collection.updateOne(
+      { _id: document._id },
+      { $set: { iconLibrary: "lucide", iconName }, $unset: { icon: "" } },
+    );
+  }
 }
 
 export async function initializeDatabase(): Promise<void> {
   const database = await getDatabase();
-  await migrateLegacyIconFields(database, FOLDERS_COLLECTION_NAME, FOLDERS_VALIDATOR, "Folder");
-  await migrateLegacyIconFields(database, TAGS_COLLECTION_NAME, TAGS_VALIDATOR, "Tag");
-  await initializeCollection<ApiKeyDocument>(
+  await initializeDbAuthCollections(database);
+  await migrateLegacyIconFields(
+    database,
+    FOLDERS_COLLECTION_NAME,
+    FOLDERS_VALIDATOR,
+    "Folder",
+  );
+  await migrateLegacyIconFields(
+    database,
+    TAGS_COLLECTION_NAME,
+    TAGS_VALIDATOR,
+    "Tag",
+  );
+  await initializeCollection<DbApiKey>(
     database,
     API_KEYS_COLLECTION_NAME,
     API_KEYS_VALIDATOR,
@@ -161,7 +180,7 @@ export async function initializeDatabase(): Promise<void> {
     false,
     true,
   );
-  await initializeCollection<FolderDocument>(
+  await initializeCollection<DbFolder>(
     database,
     FOLDERS_COLLECTION_NAME,
     FOLDERS_VALIDATOR,
@@ -171,7 +190,7 @@ export async function initializeDatabase(): Promise<void> {
     false,
     true,
   );
-  await initializeCollection<TagDocument>(
+  await initializeCollection<DbTag>(
     database,
     TAGS_COLLECTION_NAME,
     TAGS_VALIDATOR,
@@ -181,7 +200,7 @@ export async function initializeDatabase(): Promise<void> {
     false,
     true,
   );
-  await initializeCollection<SiteDocument>(
+  await initializeCollection<DbSite>(
     database,
     SITES_COLLECTION_NAME,
     SITES_VALIDATOR,
@@ -191,7 +210,7 @@ export async function initializeDatabase(): Promise<void> {
     false,
     true,
   );
-  await initializeCollection<PublicationDocument>(
+  await initializeCollection<DbPublication>(
     database,
     PUBLICATIONS_COLLECTION_NAME,
     PUBLICATIONS_VALIDATOR,
@@ -201,7 +220,7 @@ export async function initializeDatabase(): Promise<void> {
     false,
     true,
   );
-  await initializeCollection<SharedCollectionDocument>(
+  await initializeCollection<DbSharedCollection>(
     database,
     SHARED_COLLECTIONS_COLLECTION_NAME,
     SHARED_COLLECTIONS_VALIDATOR,
@@ -209,14 +228,5 @@ export async function initializeDatabase(): Promise<void> {
     getSharedCollectionsCollectionFromDatabase(database),
     SEED_SHARED_COLLECTIONS,
     true,
-  );
-  await migrateLegacyUserFields(database);
-  await initializeCollection<UserDocument>(
-    database,
-    USERS_COLLECTION_NAME,
-    USERS_VALIDATOR,
-    USERS_INDEXES,
-    getUsersCollectionFromDatabase(database),
-    SEED_USERS,
   );
 }
