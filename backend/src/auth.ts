@@ -1,5 +1,11 @@
 import { jwtVerify, SignJWT } from "jose";
-import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  scrypt,
+  timingSafeEqual,
+} from "node:crypto";
 import {
   failure,
   fromPromise,
@@ -417,8 +423,14 @@ export async function createApiKey(
   return { ...publicApiKey(document), key: rawKey };
 }
 
-export async function revokeApiKey(ownerId: string, id: string): Promise<boolean> {
-  return (await (await getApiKeysCollection()).deleteOne({ id, ownerId })).deletedCount === 1;
+export async function revokeApiKey(
+  ownerId: string,
+  id: string,
+): Promise<boolean> {
+  return (
+    (await (await getApiKeysCollection()).deleteOne({ id, ownerId }))
+      .deletedCount === 1
+  );
 }
 
 export async function getApiKeyUser(
@@ -430,7 +442,10 @@ export async function getApiKeyUser(
   const keys = await getApiKeysCollection();
   const key = await keys.findOne({ keyHash });
   if (!key)
-    return failure({ code: "API_KEY_INVALID", message: "API Key 无效或已撤销" });
+    return failure({
+      code: "API_KEY_INVALID",
+      message: "API Key 无效或已撤销",
+    });
   const user = await (await getUsersCollection()).findOne({ id: key.ownerId });
   if (!user)
     return failure({ code: "ACCOUNT_NOT_FOUND", message: "账号不存在" });
@@ -458,9 +473,13 @@ export async function updateAccount(
   const parsedDocument = parseUser(document);
   if (!parsedDocument.ok) return parsedDocument;
   const user = parsedDocument.value;
-  const isDemoAccount = user.id === "test-user" || user.email === "test@bookmark-nav.local";
+  const isDemoAccount =
+    user.id === "test-user" || user.email === "test@bookmark-nav.local";
   if (isDemoAccount && input.newPassword)
-    return failure({ code: "DEMO_ACCOUNT_READ_ONLY", message: "Demo 测试账号不能修改密码" });
+    return failure({
+      code: "DEMO_ACCOUNT_READ_ONLY",
+      message: "Demo 测试账号不能修改密码",
+    });
   const passwordConfigured = !user.passwordHash.startsWith("google:");
   if (!passwordConfigured && !input.newPassword)
     return failure({
@@ -473,16 +492,6 @@ export async function updateAccount(
       return failure({
         code: "PASSWORD_MISMATCH",
         message: "两次输入的新密码不一致",
-      });
-    if (passwordConfigured && !input.currentPassword)
-      return failure({
-        code: "PASSWORD_REQUIRED",
-        message: "修改密码需要输入当前密码",
-      });
-    if (passwordConfigured && !(await verifyPassword(input.currentPassword!, user.passwordHash)))
-      return failure({
-        code: "INVALID_CREDENTIALS",
-        message: "当前密码不正确",
       });
     const hashed = await hashPassword(input.newPassword);
     if (!hashed.ok) return hashed;

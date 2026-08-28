@@ -160,7 +160,6 @@ export const sessionResponse = z.object({ user: userResponse });
 export const accountUpdateInput = z
   .object({
     name: z.string().trim().min(1).max(60).optional(),
-    currentPassword: z.string().min(8).max(128).optional(),
     newPassword: z.string().min(8).max(128).optional(),
     confirmPassword: z.string().min(8).max(128).optional(),
   })
