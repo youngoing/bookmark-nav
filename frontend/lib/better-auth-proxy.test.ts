@@ -50,11 +50,11 @@ describe("proxyBetterAuth", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
-  it("preserves callback query parameters", async () => {
+  it("forwards the legacy Google callback to Better Auth", async () => {
     vi.stubEnv("BACKEND_URL", "http://backend:4000");
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       expect(input.toString()).toBe(
-        "http://backend:4000/api/auth/callback/feishu?code=code&state=state",
+        "http://backend:4000/api/auth/callback/google?code=code&state=state",
       );
       return new Response(null, {
         status: 302,
@@ -65,8 +65,9 @@ describe("proxyBetterAuth", () => {
 
     const response = await proxyBetterAuth(
       new Request(
-        "https://youngoing.cn/api/auth/callback/feishu?code=code&state=state",
+        "https://youngoing.cn/auth/google/callback?code=code&state=state",
       ),
+      "callback/google",
     );
 
     expect(response.status).toBe(302);

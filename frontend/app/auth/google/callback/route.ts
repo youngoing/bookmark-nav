@@ -1,8 +1,5 @@
-import { NextResponse } from "next/server";
-import { getPublicUrl } from "../../../../lib/public-url";
+import { proxyBetterAuth } from "../../../../lib/better-auth-proxy";
 
-export function GET(request: Request): Response {
-  return NextResponse.redirect(
-    getPublicUrl("/?error=oauth_route_migrated", request),
-  );
+export function GET(request: Request): Promise<Response> {
+  return proxyBetterAuth(request, "callback/google");
 }

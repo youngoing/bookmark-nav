@@ -2,13 +2,6 @@ import { randomUUID } from "node:crypto";
 import type { Collection, Db } from "mongodb";
 import { z } from "zod";
 import { getDatabase } from "../../db";
-import { API_KEYS_COLLECTION_NAME } from "./api-keys";
-import { BOOKMARKS_COLLECTION_NAME } from "./bookmarks";
-import { FOLDERS_COLLECTION_NAME } from "./folders";
-import { PUBLICATIONS_COLLECTION_NAME } from "./publications";
-import { SHARED_COLLECTIONS_COLLECTION_NAME } from "./shared-collections";
-import { SITES_COLLECTION_NAME } from "./sites";
-import { TAGS_COLLECTION_NAME } from "./tags";
 
 export const DB_USER_COLLECTION_NAME = "auth_user" as const;
 export const DB_SESSION_COLLECTION_NAME = "auth_session" as const;
@@ -147,72 +140,19 @@ async function upsertCredential(
   await accounts.updateOne(
     { issuer: "local:credential", accountId: userId },
     {
-      $set: {
-        userId,
-        providerId: "credential",
-        password: passwordHash,
-        updatedAt: now,
-      },
       $setOnInsert: {
         _id: randomUUID(),
         issuer: "local:credential",
         accountId: userId,
+        userId,
+        providerId: "credential",
+        password: passwordHash,
         createdAt: now,
+        updatedAt: now,
       },
     },
     { upsert: true },
   );
-}
-
-async function migrateOwnerReferences(
-  database: Db,
-  legacyUserId: string,
-  authUserId: string,
-): Promise<void> {
-  if (legacyUserId === authUserId) return;
-  await Promise.all([
-    database
-      .collection(BOOKMARKS_COLLECTION_NAME)
-      .updateMany({ ownerId: legacyUserId }, { $set: { ownerId: authUserId } }),
-    database
-      .collection(FOLDERS_COLLECTION_NAME)
-      .updateMany({ ownerId: legacyUserId }, { $set: { ownerId: authUserId } }),
-    database
-      .collection(TAGS_COLLECTION_NAME)
-      .updateMany({ ownerId: legacyUserId }, { $set: { ownerId: authUserId } }),
-    database
-      .collection(SITES_COLLECTION_NAME)
-      .updateMany({ ownerId: legacyUserId }, { $set: { ownerId: authUserId } }),
-    database
-      .collection(API_KEYS_COLLECTION_NAME)
-      .updateMany({ ownerId: legacyUserId }, { $set: { ownerId: authUserId } }),
-    database
-      .collection(PUBLICATIONS_COLLECTION_NAME)
-      .updateMany({ ownerId: legacyUserId }, { $set: { ownerId: authUserId } }),
-    database
-      .collection(SHARED_COLLECTIONS_COLLECTION_NAME)
-      .updateMany({ ownerId: legacyUserId }, { $set: { ownerId: authUserId } }),
-  ]);
-}
-
-async function countOwnerReferences(
-  database: Db,
-  ownerId: string,
-): Promise<number> {
-  const counts = await Promise.all([
-    database.collection(BOOKMARKS_COLLECTION_NAME).countDocuments({ ownerId }),
-    database.collection(FOLDERS_COLLECTION_NAME).countDocuments({ ownerId }),
-    database.collection(TAGS_COLLECTION_NAME).countDocuments({ ownerId }),
-    database.collection(SITES_COLLECTION_NAME).countDocuments({ ownerId }),
-    database.collection(API_KEYS_COLLECTION_NAME).countDocuments({ ownerId }),
-    database
-      .collection(PUBLICATIONS_COLLECTION_NAME)
-      .countDocuments({ ownerId }),
-    database
-      .collection(SHARED_COLLECTIONS_COLLECTION_NAME)
-      .countDocuments({ ownerId }),
-  ]);
-  return counts.reduce((total, count) => total + count, 0);
 }
 
 async function migrateLegacyUsers(database: Db): Promise<void> {
@@ -257,6 +197,8 @@ async function migrateLegacyUsers(database: Db): Promise<void> {
         throw new Error(
           `Invalid auth user for ${normalizedEmail}: ${parsed.error.message}`,
         );
+      if (parsed.data._id !== legacyUser.id)
+        throw new Error(`Auth user ${normalizedEmail} has an incompatible id`);
       migrationTargets.set(legacyUser.id, parsed.data);
       continue;
     }
@@ -292,6 +234,9 @@ async function migrateLegacyUsers(database: Db): Promise<void> {
     }
     if (!authUser)
       throw new Error(`Failed to migrate legacy user ${legacyUser.id}`);
+    if (authUser._id !== legacyUser.id)
+      throw new Error(`Auth user ${normalizedEmail} has an incompatible id`);
+    migrationTargets.set(legacyUser.id, authUser);
 
     await upsertCredential(
       accounts,
@@ -299,7 +244,6 @@ async function migrateLegacyUsers(database: Db): Promise<void> {
       legacyUser.passwordHash,
       new Date(),
     );
-    await migrateOwnerReferences(database, legacyUser.id, authUser._id);
   }
 
   const migratedEmails = await users.countDocuments({
@@ -316,22 +260,33 @@ async function migrateLegacyUsers(database: Db): Promise<void> {
         issuer: "local:credential",
         accountId: target._id,
         userId: target._id,
-        password: legacyUser.passwordHash,
+        providerId: "credential",
+        password: { $type: "string" },
       });
       if (!credential)
         throw new Error(
           `Credential migration failed for legacy user ${legacyUser.id}`,
         );
     }
-    if (
-      target._id !== legacyUser.id &&
-      (await countOwnerReferences(database, legacyUser.id)) > 0
-    )
-      throw new Error(
-        `Owner references for legacy user ${legacyUser.id} were not fully migrated`,
-      );
   }
+}
 
+export async function finalizeDbAuthUserMigration(database: Db): Promise<void> {
+  await migrateLegacyUsers(database);
+  const exists = await database
+    .listCollections({ name: LEGACY_USER_COLLECTION_NAME }, { nameOnly: true })
+    .hasNext();
+  if (!exists) return;
+  const backupExists = await database
+    .listCollections(
+      { name: LEGACY_USER_BACKUP_COLLECTION_NAME },
+      { nameOnly: true },
+    )
+    .hasNext();
+  if (backupExists)
+    throw new Error(
+      `Refusing to overwrite ${LEGACY_USER_BACKUP_COLLECTION_NAME}`,
+    );
   await database
     .collection(LEGACY_USER_COLLECTION_NAME)
     .rename(LEGACY_USER_BACKUP_COLLECTION_NAME);

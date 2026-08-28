@@ -95,7 +95,6 @@ function mapTokens(payload: TokenPayload): OAuth2Tokens {
 
 async function getGoogleToken({
   code,
-  redirectURI,
   codeVerifier,
 }: {
   code: string;
@@ -111,7 +110,7 @@ async function getGoogleToken({
         code,
         client_id: config.GOOGLE_CLIENT_ID,
         client_secret: config.GOOGLE_CLIENT_SECRET,
-        redirect_uri: redirectURI,
+        redirect_uri: config.GOOGLE_REDIRECT_URI,
         grant_type: "authorization_code",
         ...(codeVerifier ? { code_verifier: codeVerifier } : {}),
       }),
@@ -219,11 +218,7 @@ async function getFeishuUserInfo(tokens: OAuth2Tokens) {
     .catch(() => null)) as FeishuProfilePayload | null;
   const profile = payload?.data;
   const providerUserId =
-    typeof profile?.union_id === "string" && profile.union_id
-      ? profile.union_id
-      : typeof profile?.open_id === "string"
-        ? profile.open_id
-        : "";
+    typeof profile?.open_id === "string" ? profile.open_id : "";
   if (
     !response.ok ||
     !profile ||
@@ -265,6 +260,7 @@ function oauthProviders(): GenericOAuthConfig[] {
       clientSecret: config.GOOGLE_CLIENT_SECRET,
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
+      redirectURI: config.GOOGLE_REDIRECT_URI,
       accountIssuer: "https://accounts.google.com",
       accountSubject: ({ profile }) => String(profile.id || profile.sub || ""),
       scopes: ["openid", "email", "profile"],
@@ -289,8 +285,7 @@ function oauthProviders(): GenericOAuthConfig[] {
       tokenUrl: "https://open.feishu.cn/open-apis/authen/v2/oauth/token",
       userInfoUrl: "https://open.feishu.cn/open-apis/authen/v1/user_info",
       accountIssuer: "https://accounts.feishu.cn",
-      accountSubject: ({ profile }) =>
-        String(profile.union_id || profile.open_id || profile.id || ""),
+      accountSubject: ({ profile }) => String(profile.open_id || ""),
       pkce: true,
       getToken: getFeishuToken,
       getUserInfo: getFeishuUserInfo,

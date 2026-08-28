@@ -12,7 +12,7 @@ await build({
   entryPoints: [resolve(rootDir, "src/server.ts")],
   bundle: true,
   platform: "node",
-  target: "node22",
+  target: "node20",
   format: "cjs",
   outfile: resolve(outDir, "server.js"),
   // Bundle the workspace package @loomark/shared, but keep npm dependencies

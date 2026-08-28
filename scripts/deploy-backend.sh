@@ -125,6 +125,33 @@ run_pm2_local() {
   $pm2_cmd startOrRestart "$target/ecosystem.config.cjs" --env production --update-env
 }
 
+wait_for_backend_health() {
+  local env_file="$1"
+  local port
+  port=$(awk -F= '$1 == "PORT" { print $2 }' "$env_file" | tail -n 1)
+  port="${port:-4000}"
+  for _ in $(seq 1 30); do
+    if node -e '
+      const http = require("node:http");
+      const request = http.get(
+        "http://127.0.0.1:" + process.argv[1] + "/api/auth/session",
+        (response) => {
+          response.resume();
+          response.on("end", () =>
+            process.exit([200, 401].includes(response.statusCode) ? 0 : 1),
+          );
+        },
+      );
+      request.setTimeout(2000, () => request.destroy());
+      request.on("error", () => process.exit(1));
+    ' "$port"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 deploy_local() {
   local target="$TARGET_DIR"
   local incoming="${target}.incoming"
@@ -143,10 +170,13 @@ deploy_local() {
   rm -rf "$previous"
   [ -d "$target" ] && mv "$target" "$previous"
   mv "$incoming" "$target"
-  if ! run_pm2_local "$target"; then
+  if ! run_pm2_local "$target" || ! wait_for_backend_health "$target/.env"; then
     rm -rf "$target"
     [ -d "$previous" ] && mv "$previous" "$target"
-    [ -d "$target" ] && run_pm2_local "$target"
+    if [ -d "$target" ]; then
+      run_pm2_local "$target"
+      wait_for_backend_health "$target/.env"
+    fi
     exit 1
   fi
   rm -rf "$previous"
@@ -214,7 +244,8 @@ deploy_remote() {
   local user="$DEPLOY_USER"
   local host="$DEPLOY_HOST"
   local remote_dir="$TARGET_DIR"
-  local remote_archive="${remote_dir}.deploy.tar.gz"
+  local remote_archive=""
+  local release_id=""
 
   local tmp_dir=""
   local archive=""
@@ -235,6 +266,8 @@ deploy_remote() {
 
   echo "==> Creating deploy archive..."
   create_archive "$tmp_dir" "$archive"
+  release_id=$(basename "$archive")
+  remote_archive="${remote_dir}.${release_id}.tar.gz"
 
   echo "==> Preparing remote release path..."
   run_remote "mkdir -p $(dirname "$remote_dir")"
@@ -245,8 +278,19 @@ deploy_remote() {
   echo "==> Verifying and restarting on remote..."
   run_remote "
     set -e
-    incoming=${remote_dir}.incoming
+    command -v flock >/dev/null 2>&1 || {
+      echo 'ERROR: flock is required for atomic backend deployment.' >&2
+      exit 1
+    }
+    exec 9>${remote_dir}.deploy.lock
+    flock -w 600 9
+    incoming=${remote_dir}.incoming-${release_id}
     previous=${remote_dir}.previous
+    cleanup_release() {
+      rm -rf \"\$incoming\"
+      rm -f $remote_archive
+    }
+    trap cleanup_release EXIT
     rm -rf \"\$incoming\"
     mkdir -p \"\$incoming\"
     tar -xzf $remote_archive -C \"\$incoming\"
@@ -272,22 +316,29 @@ deploy_remote() {
         exit 1
       fi
     fi
-    sleep 3
     port=\$(awk -F= '\$1 == \"PORT\" { print \$2 }' $remote_dir/.env | tail -n 1)
-    if ! node -e '
-      const http = require(\"node:http\");
-      const request = http.get(
-        \"http://127.0.0.1:\" + (process.argv[1] || \"4000\") + \"/api/auth/session\",
-        (response) => {
-          response.resume();
-          response.on(\"end\", () =>
-            process.exit([200, 401].includes(response.statusCode) ? 0 : 1),
-          );
-        },
-      );
-      request.setTimeout(5000, () => request.destroy());
-      request.on(\"error\", () => process.exit(1));
-    ' \"\$port\"; then
+    healthy=false
+    for attempt in \$(seq 1 30); do
+      if node -e '
+        const http = require(\"node:http\");
+        const request = http.get(
+          \"http://127.0.0.1:\" + (process.argv[1] || \"4000\") + \"/api/auth/session\",
+          (response) => {
+            response.resume();
+            response.on(\"end\", () =>
+              process.exit([200, 401].includes(response.statusCode) ? 0 : 1),
+            );
+          },
+        );
+        request.setTimeout(2000, () => request.destroy());
+        request.on(\"error\", () => process.exit(1));
+      ' \"\$port\"; then
+        healthy=true
+        break
+      fi
+      sleep 1
+    done
+    if [ \"\$healthy\" != true ]; then
       echo 'ERROR: Backend health check failed, rolling back.' >&2
       rm -rf $remote_dir
       if [ -d \"\$previous\" ]; then mv \"\$previous\" $remote_dir; fi

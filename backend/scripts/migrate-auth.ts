@@ -1,11 +1,18 @@
-import { initializeDbAuthCollections } from "../src/database/collections/auth";
+import {
+  finalizeDbAuthUserMigration,
+  initializeDbAuthCollections,
+} from "../src/database/collections/auth";
 import { config } from "../src/config";
 import { closeDatabase, getDatabase } from "../src/db";
 
 async function main(): Promise<void> {
   const database = await getDatabase();
-  console.log(`Migrating authentication data in ${config.MONGODB_DB}...`);
+  const finalize = process.argv.includes("--finalize");
+  console.log(
+    `${finalize ? "Finalizing" : "Preparing"} authentication data in ${config.MONGODB_DB}...`,
+  );
   await initializeDbAuthCollections(database);
+  if (finalize) await finalizeDbAuthUserMigration(database);
 
   const collectionNames = new Set(
     (await database.listCollections({}, { nameOnly: true }).toArray()).map(

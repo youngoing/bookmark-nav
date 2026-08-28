@@ -121,6 +121,7 @@ export default function Home() {
   const [addSiteId, setAddSiteId] = useState<string | null>(null);
   const [editingBookmark, setEditingBookmark] = useState<BookmarkType | null>(null);
   const [showMenu, setShowMenu] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [folderEditor, setFolderEditor] = useState<FolderType | "new" | null>(null);
   const [tagEditor, setTagEditor] = useState<TagType | "new" | null>(null);
@@ -349,8 +350,16 @@ export default function Home() {
   }
 
   async function logout(): Promise<void> {
+    if (loggingOut) return;
+    setLoggingOut(true);
     const result = await fromPromise(apiFetch("/api/auth/sign-out", { method: "POST" }), () => ({ code: "NETWORK_ERROR", message: "无法退出登录" }));
-    if (result.ok) { setUser(null); setShowMenu(false); setData(initial); setPageInfo({ items: [], page: 1, pageSize: 9, total: 0, totalPages: 0 }); }
+    if (!result.ok || !result.value.ok) {
+      window.alert(result.ok ? "退出登录失败，请稍后重试" : result.error.message);
+      setLoggingOut(false);
+      return;
+    }
+    setUser(null); setShowMenu(false); setData(initial); setPageInfo({ items: [], page: 1, pageSize: 9, total: 0, totalPages: 0 });
+    setLoggingOut(false);
   }
 
   if (authLoading) return <div className="auth-shell"><div className="auth-status">正在检查登录状态...</div></div>;
@@ -375,7 +384,7 @@ export default function Home() {
       <main className="management-main">
         <header className="management-topbar">
           <div><p className="eyebrow">管理后台</p><h1>管理配置</h1></div>
-          <div className="top-actions"><div className="top-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索书签..." /></div><button type="button" className="primary-button" onClick={() => openAddBookmark()}><Plus size={16} />添加书签</button><div className="menu-wrap"><button type="button" className="avatar mini" onClick={() => setShowMenu(!showMenu)} aria-label="打开账号菜单">{user.name.slice(0, 1).toUpperCase()}</button>{showMenu && <div className="user-menu"><strong>{user.name}</strong><span>{accountIdentifier(user.email)}</span><hr /><button type="button" onClick={() => { setShowAccount(true); setShowMenu(false); }}><Settings2 size={15} />账号设置</button><button type="button" onClick={() => void logout()}><LogOut size={15} />退出登录</button></div>}</div></div>
+          <div className="top-actions"><div className="top-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索书签..." /></div><button type="button" className="primary-button" onClick={() => openAddBookmark()}><Plus size={16} />添加书签</button><div className="menu-wrap"><button type="button" className="avatar mini" onClick={() => setShowMenu(!showMenu)} aria-label="打开账号菜单">{user.name.slice(0, 1).toUpperCase()}</button>{showMenu && <div className="user-menu"><strong>{user.name}</strong><span>{accountIdentifier(user.email)}</span><hr /><button type="button" onClick={() => { setShowAccount(true); setShowMenu(false); }}><Settings2 size={15} />账号设置</button><button type="button" disabled={loggingOut} onClick={() => void logout()}><LogOut size={15} />{loggingOut ? "退出中..." : "退出登录"}</button></div>}</div></div>
         </header>
         <section className="management-content">
           <div className="management-summary" aria-label="管理概览">
@@ -420,7 +429,7 @@ export default function Home() {
     </aside>
     {mobileNav && <button type="button" className="backdrop" onClick={() => setMobileNav(false)} aria-label="关闭导航" />}
     <main className="main">
-      <header className="topbar"><button type="button" className="icon-button mobile-menu" onClick={() => setMobileNav(true)} aria-label="打开导航"><Menu size={20} /></button><div className="breadcrumbs"><span>{isEditor ? "编辑" : "工作台"}</span><span>/</span><strong>{folderName}</strong>{activeTag && <><span>/</span><strong className="crumb-tag">#{data.tags.find((tag) => tag.id === activeTag)?.name}</strong></>}</div><div className="top-actions"><div className="top-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索书签..." /><kbd>⌘ K</kbd></div>{isEditor ? <a className="icon-button" href="/" title="返回主页" aria-label="返回主页"><LayoutGrid size={18} /></a> : <a className="icon-button" href="/edit" title="进入编辑页" aria-label="进入编辑页"><Pencil size={18} /></a>}<div className="menu-wrap"><button type="button" className="avatar mini" onClick={() => setShowMenu(!showMenu)} aria-label="打开账号菜单">{user.name.slice(0, 1).toUpperCase()}</button>{showMenu && <div className="user-menu"><strong>{user.name}</strong><span>{accountIdentifier(user.email)}</span><hr /><button type="button" onClick={() => { setShowAccount(true); setShowMenu(false); }}><Settings2 size={15} />账号设置</button><button type="button" onClick={() => void logout()}><LogOut size={15} />退出登录</button></div>}</div></div></header>
+      <header className="topbar"><button type="button" className="icon-button mobile-menu" onClick={() => setMobileNav(true)} aria-label="打开导航"><Menu size={20} /></button><div className="breadcrumbs"><span>{isEditor ? "编辑" : "工作台"}</span><span>/</span><strong>{folderName}</strong>{activeTag && <><span>/</span><strong className="crumb-tag">#{data.tags.find((tag) => tag.id === activeTag)?.name}</strong></>}</div><div className="top-actions"><div className="top-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索书签..." /><kbd>⌘ K</kbd></div>{isEditor ? <a className="icon-button" href="/" title="返回主页" aria-label="返回主页"><LayoutGrid size={18} /></a> : <a className="icon-button" href="/edit" title="进入编辑页" aria-label="进入编辑页"><Pencil size={18} /></a>}<div className="menu-wrap"><button type="button" className="avatar mini" onClick={() => setShowMenu(!showMenu)} aria-label="打开账号菜单">{user.name.slice(0, 1).toUpperCase()}</button>{showMenu && <div className="user-menu"><strong>{user.name}</strong><span>{accountIdentifier(user.email)}</span><hr /><button type="button" onClick={() => { setShowAccount(true); setShowMenu(false); }}><Settings2 size={15} />账号设置</button><button type="button" disabled={loggingOut} onClick={() => void logout()}><LogOut size={15} />{loggingOut ? "退出中..." : "退出登录"}</button></div>}</div></div></header>
       <section className="content">
         {activeView === "discover" ? <>
           <div className="section-heading"><div><h2>{discoverMode === "collections" ? "共享合集" : "单条分享"}</h2><span>{discoverMode === "collections" ? sharedCollections.length : publications.length} 个公开内容</span></div><div className="discovery-tabs" role="tablist" aria-label="发现内容类型"><button role="tab" aria-selected={discoverMode === "collections"} className={discoverMode === "collections" ? "active" : ""} onClick={() => setDiscoverMode("collections")}>共享合集</button><button role="tab" aria-selected={discoverMode === "links"} className={discoverMode === "links" ? "active" : ""} onClick={() => setDiscoverMode("links")}>单条分享</button></div></div>
@@ -646,7 +655,10 @@ function LoginScreen({ onLoggedIn }: { onLoggedIn: (user: UserResponse) => void 
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [oauthProvider, setOauthProvider] = useState<"google" | "feishu" | null>(null);
-  const [feishuEnabled, setFeishuEnabled] = useState(false);
+  const [providers, setProviders] = useState<{
+    google: boolean;
+    feishu: boolean;
+  } | null>(null);
   const [error, setError] = useState("");
   const [loginMethod, setLoginMethod] = useState<"social" | "password">("social");
   useEffect(() => {
@@ -661,12 +673,16 @@ function LoginScreen({ onLoggedIn }: { onLoggedIn: (user: UserResponse) => void 
           active &&
           typeof body === "object" &&
           body !== null &&
+          "google" in body &&
+          typeof body.google === "boolean" &&
           "feishu" in body &&
-          body.feishu === true
+          typeof body.feishu === "boolean"
         )
-          setFeishuEnabled(true);
+          setProviders({ google: body.google, feishu: body.feishu });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (active) setProviders({ google: false, feishu: false });
+      });
     return () => {
       active = false;
     };
@@ -712,7 +728,7 @@ function LoginScreen({ onLoggedIn }: { onLoggedIn: (user: UserResponse) => void 
     setPassword("Test123456!");
     setError("");
   }
-  return <main className="auth-shell"><div className="auth-panel"><div className="auth-brand"><span className="brand-mark"><Bookmark size={18} strokeWidth={2.6} /></span><strong>bookmark-nav</strong></div><div><p className="eyebrow">个人工作区</p><h1>登录</h1><p>选择适合你的方式进入书签工作台。</p></div><div className="auth-tabs" role="tablist" aria-label="登录方式"><button type="button" id="social-login-tab" role="tab" aria-selected={loginMethod === "social"} aria-controls="social-login-panel" className={loginMethod === "social" ? "active" : ""} onClick={() => setLoginMethod("social")}>第三方登录</button><button type="button" id="password-login-tab" role="tab" aria-selected={loginMethod === "password"} aria-controls="password-login-panel" className={loginMethod === "password" ? "active" : ""} onClick={() => setLoginMethod("password")}>账号密码</button></div><div className="auth-tab-content">{loginMethod === "social" ? <section className="auth-method social-auth" id="social-login-panel" role="tabpanel" aria-labelledby="social-login-tab">{feishuEnabled && <button type="button" className="secondary-button auth-submit" disabled={oauthProvider !== null} onClick={() => void signInWith("feishu")}><MessageCircle size={18} />{oauthProvider === "feishu" ? "正在前往飞书..." : "使用飞书登录"}</button>}<button type="button" className="secondary-button auth-submit" disabled={oauthProvider !== null} onClick={() => void signInWith("google")}><GoogleLogo />{oauthProvider === "google" ? "正在前往 Google..." : "使用 Google 登录"}</button><small>首次使用会自动创建账号。</small>{error && <p className="form-error" role="alert">{error}</p>}</section> : <section id="password-login-panel" role="tabpanel" aria-labelledby="password-login-tab"><form className="password-login-form" onSubmit={(event) => void submit(event)}><label>邮箱<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label><label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" minLength={8} required /></label><button type="button" className="demo-link" onClick={fillDemoCredentials}>Demo 尝试</button>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary-button auth-submit" disabled={submitting}>{submitting ? "登录中..." : "登录"}</button></form></section>}</div></div></main>;
+  return <main className="auth-shell"><div className="auth-panel"><div className="auth-brand"><span className="brand-mark"><Bookmark size={18} strokeWidth={2.6} /></span><strong>bookmark-nav</strong></div><div><p className="eyebrow">个人工作区</p><h1>登录</h1><p>选择适合你的方式进入书签工作台。</p></div><div className="auth-tabs" role="tablist" aria-label="登录方式"><button type="button" id="social-login-tab" role="tab" aria-selected={loginMethod === "social"} aria-controls="social-login-panel" className={loginMethod === "social" ? "active" : ""} onClick={() => setLoginMethod("social")}>第三方登录</button><button type="button" id="password-login-tab" role="tab" aria-selected={loginMethod === "password"} aria-controls="password-login-panel" className={loginMethod === "password" ? "active" : ""} onClick={() => setLoginMethod("password")}>账号密码</button></div><div className="auth-tab-content">{loginMethod === "social" ? <section className="auth-method social-auth" id="social-login-panel" role="tabpanel" aria-labelledby="social-login-tab">{providers?.feishu && <button type="button" className="secondary-button auth-submit" disabled={oauthProvider !== null} onClick={() => void signInWith("feishu")}><MessageCircle size={18} />{oauthProvider === "feishu" ? "正在前往飞书..." : "使用飞书登录"}</button>}{providers?.google && <button type="button" className="secondary-button auth-submit" disabled={oauthProvider !== null} onClick={() => void signInWith("google")}><GoogleLogo />{oauthProvider === "google" ? "正在前往 Google..." : "使用 Google 登录"}</button>}{!providers && <small>正在加载登录方式...</small>}{providers && !providers.google && !providers.feishu && <small>第三方登录暂不可用。</small>}{providers && (providers.google || providers.feishu) && <small>首次使用会自动创建账号。</small>}{error && <p className="form-error" role="alert">{error}</p>}</section> : <section id="password-login-panel" role="tabpanel" aria-labelledby="password-login-tab"><form className="password-login-form" onSubmit={(event) => void submit(event)}><label>邮箱<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label><label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" minLength={8} required /></label><button type="button" className="demo-link" onClick={fillDemoCredentials}>Demo 尝试</button>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary-button auth-submit" disabled={submitting}>{submitting ? "登录中..." : "登录"}</button></form></section>}</div></div></main>;
 }
 
 function AccountModal({ user, onClose, onSaved }: { user: UserResponse; onClose: () => void; onSaved: (user: UserResponse) => void }) {

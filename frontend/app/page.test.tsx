@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
@@ -66,6 +66,27 @@ describe("书签工作台用户流程", () => {
     expect(await screen.findByText("Alpha 书签")).toBeTruthy();
   });
 
+  it("登出接口失败时保留当前登录状态", async () => {
+    const alert = vi.fn();
+    vi.stubGlobal("alert", alert);
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.pathname === "/api/auth/session") return json({ user: account });
+      if (url.pathname === "/api/auth/sign-out") return json({ error: "Unavailable" }, 503);
+      if (url.pathname === "/api/v1/dashboard") return json(dashboard);
+      if (url.pathname === "/api/v1/bookmarks/page") return json({ items: [alpha], page: 1, pageSize: 9, total: 1, totalPages: 1 });
+      return json({ error: "Not found" }, 404);
+    }));
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    expect(await screen.findByText("Alpha 书签")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
+    await user.click(screen.getByRole("button", { name: "退出登录" }));
+    await waitFor(() => expect(alert).toHaveBeenCalledOnce());
+    expect(screen.getByText("Alpha 书签")).toBeTruthy();
+  });
+
   it("用户可以搜索标签、切换标签并清除筛选", async () => {
     const pageQueries: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
@@ -108,7 +129,7 @@ describe("书签工作台用户流程", () => {
     expect(await screen.findByRole("heading", { name: "登录" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "第三方登录" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.queryByRole("button", { name: "使用飞书登录" })).toBeNull();
-    expect(screen.getByRole("button", { name: "使用 Google 登录" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "使用 Google 登录" })).toBeTruthy();
     const passwordTab = screen.getByRole("tab", { name: "账号密码" });
     await user.click(passwordTab);
     expect(passwordTab.getAttribute("aria-selected")).toBe("true");
@@ -132,6 +153,20 @@ describe("书签工作台用户流程", () => {
     renderWorkspace();
 
     expect(await screen.findByRole("button", { name: "使用飞书登录" })).toBeTruthy();
+  });
+
+  it("后端未启用第三方 Provider 时隐藏登录入口", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.pathname === "/api/auth/session") return json({ error: "Authentication required" }, 401);
+      if (url.pathname === "/api/auth/providers") return json({ google: false, feishu: false });
+      return json({ error: "Not found" }, 404);
+    }));
+    renderWorkspace();
+
+    expect(await screen.findByText("第三方登录暂不可用。")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "使用 Google 登录" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "使用飞书登录" })).toBeNull();
   });
 
   it("用户编辑标签后在导航中看到更新后的名称", async () => {

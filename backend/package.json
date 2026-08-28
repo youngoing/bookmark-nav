@@ -2,12 +2,16 @@
   "name": "@loomark/backend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "migrate:auth": "tsx scripts/migrate-auth.ts"
+    "migrate:auth": "tsx scripts/migrate-auth.ts",
+    "migrate:auth:finalize": "tsx scripts/migrate-auth.ts --finalize"
   },
   "dependencies": {
     "@loomark/shared": "workspace:*",
