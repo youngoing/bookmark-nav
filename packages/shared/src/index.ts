@@ -27,6 +27,16 @@ export const bookmarkCreateInput = z.object({
   tags: z.array(z.string()).default([]),
 });
 export type BookmarkCreateInput = z.infer<typeof bookmarkCreateInput>;
+export const bookmarkBatchItemInput = bookmarkCreateInput.extend({
+  id: z.string().optional(),
+  isFavorite: z.boolean().default(false),
+});
+export const bookmarkBatchWriteInput = z.object({
+  items: z.array(bookmarkBatchItemInput).min(1).max(500),
+  updateExisting: z.boolean().default(false),
+});
+export type BookmarkBatchItemInput = z.infer<typeof bookmarkBatchItemInput>;
+export type BookmarkBatchWriteInput = z.infer<typeof bookmarkBatchWriteInput>;
 export const bookmarkPatchInput = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
@@ -53,6 +63,12 @@ export const bookmarkResponse = bookmarkCreateInput.extend({
   updatedAt: z.string(),
 });
 export type BookmarkResponse = z.infer<typeof bookmarkResponse>;
+export const bookmarkBatchWriteResponse = z.object({
+  items: z.array(bookmarkResponse),
+  created: z.number().int().nonnegative(),
+  updated: z.number().int().nonnegative(),
+});
+export type BookmarkBatchWriteResponse = z.infer<typeof bookmarkBatchWriteResponse>;
 export const bookmarkPageQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(50).default(9),
@@ -288,6 +304,7 @@ export const apiEnvelope = z.object({
 export const API_PATHS = {
   dashboard: "/api/v1/dashboard",
   bookmarks: "/api/v1/bookmarks",
+  bookmarksBatch: "/api/v1/bookmarks/batch",
   bookmarksPage: "/api/v1/bookmarks/page",
   discover: "/api/v1/discover",
   sharedCollections: "/api/v1/shared-collections",

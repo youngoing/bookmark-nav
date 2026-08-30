@@ -4,12 +4,14 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import { randomUUID } from "node:crypto";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import {
   accountUpdateInput,
   apiKeyCreateInput,
   bookmarkCreateInput,
+  bookmarkBatchWriteInput,
   bookmarkPageQuery,
   bookmarkPatchInput,
   folderCreateInput,
@@ -33,13 +35,14 @@ import {
   updateAccount,
 } from "./auth";
 import { getAuthProviderAvailability, getBetterAuth } from "./better-auth";
-import { config, configSource } from "./config";
+import { config } from "./config";
 import { closeDatabase } from "./db";
 import { initializeDatabase } from "./database/initialize";
 import { appRouter, type BackendContext } from "./router";
 import {
   clickBookmark,
   createBookmark,
+  batchWriteBookmarks,
   createFolder,
   createSite,
   createTag,
@@ -296,6 +299,30 @@ async function handleRest(
     sendJson(
       response,
       result.ok ? 201 : 400,
+      result.ok
+        ? (result.value as JsonValue)
+        : { error: result.error.message, code: result.error.code },
+    );
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/bookmarks/batch") {
+    const bodyResult = await fromPromise(readBody(request), () => ({
+      code: "INVALID_JSON",
+      message: "Invalid JSON payload",
+    }));
+    if (!bodyResult.ok) {
+      sendJson(response, 400, { error: bodyResult.error.message, code: bodyResult.error.code });
+      return;
+    }
+    const parsed = bookmarkBatchWriteInput.safeParse(bodyResult.value);
+    if (!parsed.success) {
+      sendJson(response, 400, { error: "批量书签内容无效", code: "INVALID_BOOKMARK_BATCH_INPUT" });
+      return;
+    }
+    const result = await batchWriteBookmarks(user.id, parsed.data.items, parsed.data.updateExisting);
+    sendJson(
+      response,
+      result.ok ? 200 : result.error.code === "NOT_FOUND" ? 404 : 400,
       result.ok
         ? (result.value as JsonValue)
         : { error: result.error.message, code: result.error.code },
@@ -691,6 +718,17 @@ async function handleRest(
 }
 
 const server = createServer((request, response) => {
+  const requestId = request.headers["x-request-id"]?.toString() || randomUUID();
+  const startedAt = Date.now();
+  response.once("finish", () => {
+    console.info("http request", {
+      requestId,
+      method: request.method || "UNKNOWN",
+      path: request.url?.split("?", 1)[0] || "/",
+      statusCode: response.statusCode,
+      durationMs: Date.now() - startedAt,
+    });
+  });
   const url = new URL(
     request.url || "/",
     `http://${request.headers.host || "localhost"}`,
@@ -735,8 +773,7 @@ initializeDatabase()
   .then(() =>
     server.listen(config.PORT, () =>
       console.log(
-        `bookmark-nav backend listening on http://localhost:${config.PORT}`,
-        { configSource },
+        `bookmark-nav backend started successfully at http://localhost:${config.PORT}`,
       ),
     ),
   )

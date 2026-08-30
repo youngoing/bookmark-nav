@@ -1,9 +1,14 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { bookmarkCreateInput, bookmarkPatchInput } from "@loomark/shared";
+import {
+  bookmarkBatchWriteInput,
+  bookmarkCreateInput,
+  bookmarkPatchInput,
+} from "@loomark/shared";
 import { getSessionUser } from "./auth";
 import {
   clickBookmark,
+  batchWriteBookmarks,
   createBookmark,
   getDashboard,
   listBookmarks,
@@ -29,6 +34,11 @@ export const appRouter = t.router({
     create: protectedProcedure
       .input(bookmarkCreateInput)
       .mutation(({ ctx, input }) => createBookmark(ctx.user.id, input)),
+    batchWrite: protectedProcedure
+      .input(bookmarkBatchWriteInput)
+      .mutation(({ ctx, input }) =>
+        batchWriteBookmarks(ctx.user.id, input.items, input.updateExisting),
+      ),
     update: protectedProcedure
       .input(z.object({ id: z.string(), patch: bookmarkPatchInput }))
       .mutation(({ ctx, input }) =>

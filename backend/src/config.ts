@@ -72,4 +72,3 @@ export const config = {
   ...parsed.data,
   GOOGLE_REDIRECT_URI: googleRedirectUri,
 };
-export const configSource = envPath || "process environment and defaults";

@@ -4,6 +4,8 @@ import {
   failure,
   success,
   type BookmarkCreateInput,
+  type BookmarkBatchItemInput,
+  type BookmarkBatchWriteResponse,
   type BookmarkPageQuery,
   type BookmarkPageResponse,
   type BookmarkPatchInput,
@@ -674,6 +676,64 @@ export async function createBookmark(
   };
   await (await getBookmarksCollection()).insertOne(item);
   return success(item);
+}
+
+export async function batchWriteBookmarks(
+  ownerId: string,
+  items: BookmarkBatchItemInput[],
+  updateExisting: boolean,
+): Promise<Result<BookmarkBatchWriteResponse, ManagementError>> {
+  const bookmarks = await getBookmarksCollection();
+  const results: BookmarkResponse[] = [];
+  let created = 0;
+  let updated = 0;
+
+  for (const input of items) {
+    const existing = input.id
+      ? await bookmarks.findOne({ id: input.id, ownerId })
+      : updateExisting
+        ? await bookmarks.findOne({ ownerId, url: input.url })
+        : null;
+    if (existing) {
+      const patch: BookmarkPatchInput = {
+        folderId: input.folderId,
+        tags: input.tags,
+        isFavorite: input.isFavorite,
+        ...(input.siteId ? { siteId: input.siteId } : {}),
+        ...(input.title !== undefined ? { title: input.title } : {}),
+        ...(input.description !== undefined
+          ? { description: input.description }
+          : {}),
+      };
+      const result = await updateBookmark(ownerId, existing.id, patch);
+      if (!result.ok) return result;
+      results.push(result.value);
+      updated += 1;
+      continue;
+    }
+    if (input.id)
+      return failure({ code: "NOT_FOUND", message: "待更新的书签不存在" });
+    const result = await createBookmark(ownerId, {
+      url: input.url,
+      title: input.title,
+      description: input.description,
+      siteId: input.siteId,
+      folderId: input.folderId,
+      tags: input.tags,
+    });
+    if (!result.ok) return result;
+    let value = result.value;
+    if (input.isFavorite) {
+      const favorite = await updateBookmark(ownerId, value.id, {
+        isFavorite: true,
+      });
+      if (!favorite.ok) return favorite;
+      value = favorite.value;
+    }
+    results.push(value);
+    created += 1;
+  }
+  return success({ items: results, created, updated });
 }
 
 export async function clickBookmark(
