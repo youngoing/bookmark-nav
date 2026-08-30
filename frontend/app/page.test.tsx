@@ -9,7 +9,7 @@ import { WorkspaceModeProvider, type WorkspaceMode } from "./workspace-mode";
 
 const account: UserResponse = { id: "test-user", email: "test@bookmark-nav.local", name: "测试账号", createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" };
 const alpha: BookmarkResponse = { id: "alpha", ownerId: account.id, siteId: "site-alpha", title: "Alpha 书签", url: "https://alpha.example", description: "第一页内容", domain: "alpha.example", favicon: "https://alpha.example/favicon.ico", folderId: "dev", tags: ["frontend"], clicks: 10, isFavorite: false, publicationId: null, createdAt: "2025-01-02T00:00:00.000Z", updatedAt: "2025-01-02T00:00:00.000Z" };
-const beta: BookmarkResponse = { ...alpha, id: "beta", siteId: "site-beta", title: "Beta 书签", url: "https://beta.example", domain: "beta.example", favicon: "https://beta.example/favicon.ico", description: "第二页内容", createdAt: "2025-01-01T00:00:00.000Z" };
+const beta: BookmarkResponse = { ...alpha, id: "beta", siteId: "site-beta", title: "Beta 书签", url: "https://beta.example", domain: "beta.example", favicon: "https://beta.example/favicon.ico", description: "第二页内容", tags: [], createdAt: "2025-01-01T00:00:00.000Z" };
 const dashboard: DashboardData = {
   bookmarks: [alpha, beta],
   folders: [{ id: "all", ownerId: account.id, name: "全部书签", iconLibrary: "custom", iconName: "◈", count: 2, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" }, { id: "dev", ownerId: account.id, name: "开发工具", iconLibrary: "custom", iconName: "⌘", count: 2, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" }],
@@ -52,11 +52,11 @@ describe("书签工作台用户流程", () => {
     await user.click(collapse);
     expect(screen.getByRole("button", { name: "展开导航" })).toBeTruthy();
     expect(screen.getByRole("list", { name: "大图书签" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "列表展示" }));
+    await user.click(screen.getByTitle("列表展示"));
     expect(screen.getByRole("list", { name: "列表书签" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "圆圈展示" }));
     expect(screen.getByRole("list", { name: "圆圈书签" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "细列表展示" }));
+    await user.click(screen.getAllByRole("button", { name: "细列表展示" })[0]);
     expect(screen.getByRole("list", { name: "细列表书签" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "表格展示" }));
     expect(screen.getByRole("table")).toBeTruthy();
@@ -67,8 +67,6 @@ describe("书签工作台用户流程", () => {
   });
 
   it("登出接口失败时保留当前登录状态", async () => {
-    const alert = vi.fn();
-    vi.stubGlobal("alert", alert);
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = requestUrl(input);
       if (url.pathname === "/api/auth/session") return json({ user: account });
@@ -83,7 +81,7 @@ describe("书签工作台用户流程", () => {
     expect(await screen.findByText("Alpha 书签")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
     await user.click(screen.getByRole("button", { name: "退出登录" }));
-    await waitFor(() => expect(alert).toHaveBeenCalledOnce());
+    expect((await screen.findByRole("status")).textContent).toContain("退出登录失败");
     expect(screen.getByText("Alpha 书签")).toBeTruthy();
   });
 
@@ -103,13 +101,84 @@ describe("书签工作台用户流程", () => {
     renderWorkspace();
 
     expect(await screen.findByText("Alpha 书签")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /^标签/ }));
     const tagSearch = screen.getByRole("textbox", { name: "搜索标签" });
     await user.type(tagSearch, "前");
-    await user.click(screen.getByRole("button", { name: /前端/ }));
+    await user.click(screen.getAllByRole("button", { name: /前端/ }).at(-1)!);
+    await user.click(screen.getByText("bookmark-nav"));
+    expect(screen.getByRole("heading", { name: "全部书签" })).toBeTruthy();
+    expect(screen.getByText("Beta 书签")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /^标签/ }));
+    await user.click(screen.getAllByRole("button", { name: /前端/ }).at(-1)!);
+    await user.click(screen.getByRole("button", { name: "应用筛选" }));
     expect(await screen.findByRole("heading", { name: "#前端" })).toBeTruthy();
-    expect(pageQueries.some((query) => query.includes("tagId=frontend"))).toBe(true);
-    await user.click(screen.getByRole("button", { name: "清除标签筛选" }));
+    expect(screen.getByText("Alpha 书签")).toBeTruthy();
+    expect(screen.queryByText("Beta 书签")).toBeNull();
+    expect(pageQueries).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(await screen.findByRole("heading", { name: "全部书签" })).toBeTruthy();
+  });
+
+  it("标签筛选包含网站继承标签，并排除不匹配的书签", async () => {
+    const inheritedBookmark = { ...beta, title: "继承标签的书签" };
+    const filteredDashboard = {
+      ...dashboard,
+      bookmarks: [alpha, inheritedBookmark],
+      tags: [{ ...dashboard.tags[0], count: 2 }],
+      sites: dashboard.sites.map((site) => site.id === "site-beta" ? { ...site, tags: ["frontend"] } : site),
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.pathname === "/api/auth/session") return json({ user: account });
+      if (url.pathname === "/api/v1/dashboard") return json(filteredDashboard);
+      if (url.pathname === "/api/v1/bookmarks/page") return json({ items: [], page: 1, pageSize: 9, total: 0, totalPages: 0 });
+      return json({ error: "Not found" }, 404);
+    }));
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    expect(await screen.findByText("继承标签的书签")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /^标签/ }));
+    await user.click(screen.getAllByRole("button", { name: /前端/ }).at(-1)!);
+    await user.click(screen.getByRole("button", { name: "应用筛选" }));
+
+    expect(await screen.findByText("Alpha 书签")).toBeTruthy();
+    expect(screen.getByText("继承标签的书签")).toBeTruthy();
+    expect(screen.getByText("2 个书签")).toBeTruthy();
+  });
+
+  it("多标签默认取交集，也可以切换为并集", async () => {
+    const backendTag = { ...dashboard.tags[0], id: "backend", name: "后端", count: 1 };
+    const filteredDashboard = {
+      ...dashboard,
+      bookmarks: [alpha, { ...beta, tags: ["backend"] }],
+      tags: [{ ...dashboard.tags[0], count: 1 }, backendTag],
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.pathname === "/api/auth/session") return json({ user: account });
+      if (url.pathname === "/api/v1/dashboard") return json(filteredDashboard);
+      if (url.pathname === "/api/v1/bookmarks/page") return json({ items: [], page: 1, pageSize: 9, total: 0, totalPages: 0 });
+      return json({ error: "Not found" }, 404);
+    }));
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    expect(await screen.findByText("Alpha 书签")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /^标签/ }));
+    await user.click(screen.getAllByRole("button", { name: /前端/ }).at(-1)!);
+    await user.click(screen.getAllByRole("button", { name: /后端/ }).at(-1)!);
+    await user.click(screen.getByRole("button", { name: "应用筛选" }));
+    await waitFor(() => {
+      expect(screen.queryByText("Alpha 书签")).toBeNull();
+      expect(screen.queryByText("Beta 书签")).toBeNull();
+    });
+
+    await user.click(screen.getByRole("button", { name: /^标签/ }));
+    await user.click(screen.getByRole("button", { name: "并集" }));
+    await user.click(screen.getByRole("button", { name: "应用筛选" }));
+    expect(await screen.findByText("Alpha 书签")).toBeTruthy();
+    expect(await screen.findByText("Beta 书签")).toBeTruthy();
   });
 
   it("未登录用户使用初始化测试账号后进入工作台", async () => {
@@ -212,9 +281,9 @@ describe("书签工作台用户流程", () => {
     const user = userEvent.setup();
     renderWorkspace();
 
-    expect(await screen.findByText("10")).toBeTruthy();
+    expect((await screen.findAllByText("10")).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("link", { name: /Alpha 书签/ }));
-    expect(await screen.findByText("11")).toBeTruthy();
+    expect((await screen.findAllByText("11")).length).toBeGreaterThan(0);
   });
 
   it("编辑页默认展示独立的书签管理配置面板", async () => {

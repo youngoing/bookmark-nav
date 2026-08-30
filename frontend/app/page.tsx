@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
-import { Activity, Archive, ArrowUpRight, BarChart3, Bell, Bookmark, BookOpen, Briefcase, CalendarDays, Camera, Check, ChevronLeft, ChevronRight, CircleDot, Clock3, Cloud, Code2, Compass, Copy, Database, Download, FileText, Film, Flag, Folder, FolderOpen, Gamepad2, Globe2, GraduationCap, Hammer, Headphones, Heart, Image, Inbox, KeyRound, Lightbulb, Link, Link2, Lock, LayoutGrid, LifeBuoy, List, LogOut, Map as MapIcon, Menu, MessageCircle, Monitor, Moon, Music, Package, Palette, PanelLeftClose, PanelLeftOpen, Pencil, Plane, Plus, Rocket, Rows3, Rss, Search, Settings2, Share2, Shield, ShoppingBag, SlidersHorizontal, Sparkles, Star, Sun, Tag, Terminal, Table2, ThumbsUp, Trash2, Trophy, Tv, Users, Wallet, Wifi, Wrench, X, type LucideIcon } from "lucide-react";
+import { Activity, Archive, ArrowUpRight, BarChart3, Bell, Bookmark, BookOpen, Briefcase, CalendarDays, Camera, Check, ChevronLeft, ChevronRight, CircleDot, Clock3, Cloud, Code2, Compass, Copy, Database, Download, FileText, Film, Flag, Folder, FolderOpen, Gamepad2, Globe2, GraduationCap, Hammer, Headphones, Heart, History, Image, Inbox, KeyRound, Lightbulb, Link, Link2, Lock, LayoutGrid, LifeBuoy, List, LogOut, Map as MapIcon, Menu, MessageCircle, Monitor, Moon, Music, Package, Palette, PanelLeftClose, PanelLeftOpen, Pencil, Plane, Plus, Rocket, Rows3, Rss, Search, Settings2, Share2, Shield, ShoppingBag, SlidersHorizontal, Sparkles, Star, Sun, Tag, Terminal, Table2, ThumbsUp, Trash2, Trophy, Tv, Users, Wallet, Wifi, Wrench, X, type LucideIcon } from "lucide-react";
 import type { Bookmark as BookmarkType, DashboardData } from "../lib/types";
 import { apiKeyCreatedResponse, apiKeyListResponse, bookmarkBatchWriteResponse, bookmarkPageResponse, bookmarkResponse, dashboardResponse, folderResponse, fromPromise, publicationListResponse, sessionResponse, sharedCollectionListResponse, sharedCollectionResponse, siteResponse, tagResponse, type ApiKeyResponse, type BookmarkPageResponse, type Folder as FolderType, type IconLibrary, type JsonValue, type Publication, type SharedCollection, type Site, type Tag as TagType, type UserResponse } from "@loomark/shared";
 import { authClient } from "../lib/auth-client";
@@ -60,6 +60,7 @@ type QuerySource = "table" | "view";
 type QueryLogic = "and" | "or";
 type QueryOperator = "contains" | "equals" | "notEquals" | "gt" | "lt" | "isEmpty" | "isNotEmpty";
 type QueryValue = string | number | boolean | string[] | null | undefined;
+type TagMatchMode = "and" | "or";
 type QueryField<T> = { id: string; label: string; source: QuerySource; operators: QueryOperator[]; getValue: (item: T) => QueryValue; options?: { label: string; value: string }[]; placeholder?: string };
 type QueryCondition = { id: string; fieldId: string; operator: QueryOperator; value: string };
 type QueryState = { source: QuerySource; logic: QueryLogic; conditions: QueryCondition[]; page: number; pageSize: number };
@@ -124,8 +125,9 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(true);
   const [data, setData] = useState(initial);
   const [activeFolder, setActiveFolder] = useState("all");
-  const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<"all" | "recent" | "favorites" | "sites" | "discover">("all");
+  const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [tagMatchMode, setTagMatchMode] = useState<TagMatchMode>("and");
+  const [activeView, setActiveView] = useState<"all" | "recent" | "visited" | "unorganized" | "favorites" | "sites" | "discover">("all");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"recent" | "clicks" | "az">("recent");
   const [showAdd, setShowAdd] = useState(false);
@@ -133,6 +135,7 @@ export default function Home() {
   const [editingBookmark, setEditingBookmark] = useState<BookmarkType | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const [showAccount, setShowAccount] = useState(false);
   const [folderEditor, setFolderEditor] = useState<FolderType | "new" | null>(null);
   const [tagEditor, setTagEditor] = useState<TagType | "new" | null>(null);
@@ -149,6 +152,18 @@ export default function Home() {
     return saved === "circle" || saved === "compact" || saved === "list" || saved === "table" ? saved : "grid";
   });
   const [pageInfo, setPageInfo] = useState<BookmarkPageResponse>({ items: [], page: 1, pageSize: 9, total: 0, totalPages: 0 });
+  const [pageSize, setPageSize] = useState(9);
+  const [browsePage, setBrowsePage] = useState(1);
+  const [recentlyVisitedIds, setRecentlyVisitedIds] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    const saved = window.localStorage.getItem("bookmark-nav-recently-visited");
+    try {
+      const parsed: unknown = saved ? JSON.parse(saved) : [];
+      return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+    } catch {
+      return new Set();
+    }
+  });
   const [publications, setPublications] = useState<Publication[]>([]);
   const [sharedCollections, setSharedCollections] = useState<SharedCollection[]>([]);
   const [discoverMode, setDiscoverMode] = useState<"collections" | "links">("collections");
@@ -196,10 +211,10 @@ export default function Home() {
     const requestId = ++pageRequestId.current;
     setPageLoading(true);
     setPageError(null);
-    const params = new URLSearchParams({ page: String(page), pageSize: "9", sort: activeView === "recent" ? "recent" : sort });
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), sort: activeView === "recent" ? "recent" : sort });
     if (activeView === "favorites") params.set("favorite", "true");
     if (activeFolder !== "all") params.set("folderId", activeFolder);
-    if (activeTag) params.set("tagId", activeTag);
+    if (activeTags[0]) params.set("tagId", activeTags[0]);
     if (query.trim()) params.set("q", query.trim());
     const responseResult = await fromPromise(apiFetch(`/api/v1/bookmarks/page?${params.toString()}`, { cache: "no-store" }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
     if (!responseResult.ok) {
@@ -252,26 +267,63 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (!user) return;
     if (activeView === "discover") void loadDiscover();
-    else if (activeView !== "sites") void loadPage(1);
-  }, [activeFolder, activeTag, activeView, query, sort, user]);
+  }, [activeView, user]);
   useEffect(() => {
     if (!user || !isEditor || managementSection !== "sharing") return;
     void loadDiscover();
   }, [isEditor, managementSection, user]);
 
   const visible = pageInfo.items;
-  const folderName = activeView === "recent" ? "最近添加" : activeView === "favorites" ? "我的收藏" : activeView === "sites" ? "网站" : activeView === "discover" ? "发现" : data.folders.find((folder) => folder.id === activeFolder)?.name || "全部书签";
+  const browseItems = useMemo(() => {
+    if (activeView === "sites" || activeView === "discover") return [];
+    const search = query.trim().toLocaleLowerCase();
+    return [...data.bookmarks].filter((bookmark) => {
+      const site = data.sites.find((item) => item.id === bookmark.siteId);
+      const folderMatched = activeFolder === "all" || bookmark.folderId === activeFolder || site?.folderId === activeFolder;
+      const tagIds = effectiveTagIds(bookmark, data.sites);
+      const tagMatched = tagMatchMode === "and" ? activeTags.every((tagId) => tagIds.includes(tagId)) : activeTags.some((tagId) => tagIds.includes(tagId));
+      const tagCount = effectiveTagIds(bookmark, data.sites).length;
+      const viewMatched = activeView === "favorites" ? bookmark.isFavorite : activeView === "visited" ? recentlyVisitedIds.has(bookmark.id) : activeView !== "unorganized" || !bookmark.folderId || tagCount === 0;
+      const searchMatched = !search || [bookmark.title, bookmark.domain, bookmark.description].some((value) => value.toLocaleLowerCase().includes(search));
+      return folderMatched && tagMatched && viewMatched && searchMatched;
+    }).sort((a, b) => activeView === "visited" ? Array.from(recentlyVisitedIds).indexOf(a.id) - Array.from(recentlyVisitedIds).indexOf(b.id) : activeView === "recent" || sort === "recent" ? new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() : sort === "clicks" ? b.clicks - a.clicks : a.title.localeCompare(b.title));
+  }, [activeFolder, activeTags, activeView, data.bookmarks, data.sites, query, recentlyVisitedIds, sort, tagMatchMode]);
+  useEffect(() => {
+    const totalPages = browseItems.length ? Math.ceil(browseItems.length / pageSize) : 0;
+    const page = totalPages ? Math.min(browsePage, totalPages) : 1;
+    if (page !== browsePage) setBrowsePage(page);
+    setPageInfo({ items: browseItems.slice((page - 1) * pageSize, page * pageSize), page, pageSize, total: browseItems.length, totalPages });
+    setPageLoading(false);
+  }, [browseItems, browsePage, pageSize]);
+  const folderName = activeView === "recent" ? "最近添加" : activeView === "visited" ? "最近访问" : activeView === "unorganized" ? "未整理" : activeView === "favorites" ? "我的收藏" : activeView === "sites" ? "网站" : activeView === "discover" ? "发现" : data.folders.find((folder) => folder.id === activeFolder)?.name || "全部书签";
   const isBookmarkEditor = isEditor && activeView !== "sites" && activeView !== "discover";
+  const displaySurfaceRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!user || activeView === "sites" || activeView === "discover") return;
+    const updatePageSize = () => {
+      const width = displaySurfaceRef.current?.clientWidth || window.innerWidth - (sidebarCollapsed ? 72 : 245) - 64;
+      const columnWidth = displayMode === "circle" ? (window.innerWidth <= 760 ? 82 : 112) : displayMode === "grid" ? 240 : width;
+      const columns = Math.max(1, Math.floor(width / columnWidth));
+      const rowHeight = displayMode === "circle" ? 104 : displayMode === "grid" ? 198 : displayMode === "compact" ? 47 : displayMode === "list" ? 74 : 62;
+      const rows = Math.max(1, Math.floor(Math.max(rowHeight, window.innerHeight - 320) / rowHeight));
+      const next = Math.min(50, Math.max(1, columns * rows));
+      setPageSize((current) => current === next ? current : next);
+    };
+    updatePageSize();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updatePageSize);
+    if (displaySurfaceRef.current && observer) observer.observe(displaySurfaceRef.current);
+    window.addEventListener("resize", updatePageSize);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", updatePageSize); };
+  }, [activeView, displayMode, sidebarCollapsed, user, isEditor]);
   useEffect(() => { window.localStorage.setItem("bookmark-nav-display-mode", displayMode); }, [displayMode]);
 
   function switchWorkspaceView(view: typeof activeView, folder = "all", tag: string | null = null): void {
     setActiveView(view);
     setActiveFolder(folder);
-    setActiveTag(tag);
+     setActiveTags(tag ? [tag] : []);
     setQuery("");
-    setPageInfo((current) => ({ ...current, page: 1 }));
+     setBrowsePage(1);
     if (view === "recent") setSort("recent");
     setMobileNav(false);
   }
@@ -295,6 +347,12 @@ export default function Home() {
     if (!parsed.success) return;
     const updatedBookmark = parsed.data;
 
+    setRecentlyVisitedIds((current) => {
+      const next = new Set([updatedBookmark.id, ...current]);
+      window.localStorage.setItem("bookmark-nav-recently-visited", JSON.stringify(Array.from(next).slice(0, 50)));
+      return next;
+    });
+
     setPageInfo((current) => ({
       ...current,
       items: current.items.map((item) => item.id === updatedBookmark.id ? updatedBookmark : item),
@@ -308,15 +366,15 @@ export default function Home() {
         totalClicks: Math.max(0, current.totalClicks + clickDelta),
       };
     });
-    void refreshDashboard();
+    await refreshDashboard();
   }
   async function deleteTag(tag: TagType): Promise<void> {
     const responseResult = await fromPromise(apiFetch(`/api/v1/tags/${tag.id}`, { method: "DELETE" }), () => ({ code: "NETWORK_ERROR", message: "无法删除标签" }));
     if (!responseResult.ok) return;
     const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
     if (!responseResult.value.ok || !bodyResult.ok || !tagResponse.safeParse(bodyResult.value).success) return;
-    setActiveTag((current) => current === tag.id ? null : current);
-    void refreshDashboard();
+    setActiveTags((current) => current.filter((id) => id !== tag.id));
+    await refreshDashboard();
   }
   async function deleteBookmark(bookmark: BookmarkType): Promise<void> {
     if (!window.confirm(`确定删除“${bookmark.title}”吗？`)) return;
@@ -325,8 +383,9 @@ export default function Home() {
     const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
     if (!responseResult.value.ok || !bodyResult.ok || typeof bodyResult.value !== "object" || bodyResult.value === null || Array.isArray(bodyResult.value) || !("deleted" in bodyResult.value) || bodyResult.value.deleted !== true) return;
     setEditingBookmark(null);
-    void refreshDashboard();
-    void loadPage(pageInfo.page);
+    setData((current) => ({ ...current, bookmarks: current.bookmarks.filter((item) => item.id !== bookmark.id) }));
+    setPageInfo((current) => ({ ...current, items: current.items.filter((item) => item.id !== bookmark.id), total: Math.max(0, current.total - 1) }));
+    await refreshDashboard();
   }
   async function toggleFavorite(bookmark: BookmarkType): Promise<void> {
     const responseResult = await fromPromise(apiFetch(`/api/v1/bookmarks/${bookmark.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ isFavorite: !bookmark.isFavorite }) }), () => ({ code: "NETWORK_ERROR", message: "无法更新收藏" }));
@@ -335,7 +394,7 @@ export default function Home() {
     const parsed = bodyResult.ok ? bookmarkResponse.safeParse(bodyResult.value) : null;
     if (!responseResult.value.ok || !parsed?.success) return;
     setPageInfo((current) => ({ ...current, items: current.items.map((item) => item.id === bookmark.id ? parsed.data : item) }));
-    void refreshDashboard();
+    await refreshDashboard();
   }
 
   async function toggleShare(bookmark: BookmarkType): Promise<void> {
@@ -343,7 +402,6 @@ export default function Home() {
     const responseResult = await fromPromise(apiFetch(`/api/v1/bookmarks/${bookmark.id}/share`, { method: bookmark.publicationId ? "DELETE" : "POST" }), () => ({ code: "NETWORK_ERROR", message: "无法更新分享状态" }));
     if (!responseResult.ok || !responseResult.value.ok) return;
     await refreshDashboard();
-    await loadPage(pageInfo.page);
   }
 
   async function saveSharedBookmark(publication: Publication): Promise<void> {
@@ -365,7 +423,8 @@ export default function Home() {
     setLoggingOut(true);
     const result = await fromPromise(apiFetch("/api/auth/sign-out", { method: "POST" }), () => ({ code: "NETWORK_ERROR", message: "无法退出登录" }));
     if (!result.ok || !result.value.ok) {
-      window.alert(result.ok ? "退出登录失败，请稍后重试" : result.error.message);
+      setOperationMessage(result.ok ? "退出登录失败，请稍后重试" : result.error.message);
+      window.setTimeout(() => setOperationMessage(null), 4000);
       setLoggingOut(false);
       return;
     }
@@ -377,6 +436,7 @@ export default function Home() {
   if (!user) return <LoginScreen onLoggedIn={setUser} />;
 
   if (isEditor) return <>
+    {operationMessage && <div className="operation-toast" role="status">{operationMessage}</div>}
     <div className="management-shell">
       <aside className={`management-sidebar ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
         <div className="brand"><span className="brand-mark"><Bookmark size={17} strokeWidth={2.6} /></span><span>bookmark-nav</span><button type="button" className="icon-button sidebar-toggle" onClick={() => setSidebarCollapsed((current) => !current)} aria-label={sidebarCollapsed ? "展开导航" : "收起导航"} title={sidebarCollapsed ? "展开导航" : "收起导航"}>{sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button></div>
@@ -422,41 +482,46 @@ export default function Home() {
   </>;
 
   return <div className="shell">
+    {operationMessage && <div className="operation-toast" role="status">{operationMessage}</div>}
     <aside className={`sidebar ${mobileNav ? "mobile-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <div className="brand"><span className="brand-mark"><Bookmark size={17} strokeWidth={2.6} /></span><span>bookmark-nav</span><button type="button" className="icon-button sidebar-toggle" onClick={() => setSidebarCollapsed((current) => !current)} aria-label={sidebarCollapsed ? "展开导航" : "收起导航"} title={sidebarCollapsed ? "展开导航" : "收起导航"}>{sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button><button type="button" className="icon-button sidebar-close" onClick={() => setMobileNav(false)} aria-label="关闭导航"><X size={18} /></button></div>
       <nav className="nav">
         <p className="nav-label">个人空间</p>
-        <button type="button" className={`nav-item ${activeView === "all" && activeFolder === "all" && !activeTag ? "selected" : ""}`} onClick={() => switchWorkspaceView("all")}><LayoutGrid size={17} />我的书签<span className="nav-count">{data.bookmarks.length}</span></button>
-        <button type="button" className={`nav-item ${activeView === "recent" ? "selected" : ""}`} onClick={() => switchWorkspaceView("recent")}><Clock3 size={17} />最近添加</button>
+         <button type="button" className={`nav-item ${activeView === "all" && activeFolder === "all" && !activeTags.length ? "selected" : ""}`} onClick={() => switchWorkspaceView("all")}><LayoutGrid size={17} />我的书签<span className="nav-count">{data.bookmarks.length}</span></button>
+         <button type="button" className={`nav-item ${activeView === "recent" ? "selected" : ""}`} onClick={() => switchWorkspaceView("recent")}><Clock3 size={17} />最近添加</button>
+         <button type="button" className={`nav-item ${activeView === "visited" ? "selected" : ""}`} onClick={() => switchWorkspaceView("visited")}><History size={17} />最近访问<span className="nav-count">{data.bookmarks.filter((bookmark) => recentlyVisitedIds.has(bookmark.id)).length}</span></button>
+         <button type="button" className={`nav-item ${activeView === "unorganized" ? "selected" : ""}`} onClick={() => switchWorkspaceView("unorganized")}><Inbox size={17} />未整理<span className="nav-count">{data.bookmarks.filter((bookmark) => !bookmark.folderId || effectiveTagIds(bookmark, data.sites).length === 0).length}</span></button>
         <button type="button" className={`nav-item ${activeView === "favorites" ? "selected" : ""}`} onClick={() => switchWorkspaceView("favorites")}><Star size={17} />我的收藏<span className="nav-count">{data.bookmarks.filter((bookmark) => bookmark.isFavorite).length}</span></button>
-        <button type="button" className={`nav-item ${activeView === "sites" ? "selected" : ""}`} onClick={() => switchWorkspaceView("sites")}><Globe2 size={17} />网站<span className="nav-count">{data.sites.length}</span></button>
-        <p className="nav-label folder-label">共享空间</p>
+         <button type="button" className={`nav-item ${activeView === "sites" ? "selected" : ""}`} onClick={() => switchWorkspaceView("sites")}><Globe2 size={17} />网站<span className="nav-count">{data.sites.length}</span></button>
+         <p className="nav-label folder-label">常用标签</p>
+         {data.tags.slice().sort((a, b) => b.count - a.count).slice(0, 5).map((tag) => <button type="button" key={tag.id} className={`nav-item ${activeTags.length === 1 && activeTags[0] === tag.id ? "selected" : ""}`} onClick={() => switchWorkspaceView("all", "all", tag.id)}><span className="tag-dot" style={{ background: tag.color }} />{tag.name}<span className="nav-count">{tag.count}</span></button>)}
+         <p className="nav-label folder-label">共享空间</p>
         <button type="button" className={`nav-item ${activeView === "discover" ? "selected" : ""}`} onClick={() => switchWorkspaceView("discover")}><Compass size={17} />发现</button>
-        <p className="nav-label folder-label">目录 {isEditor && <button type="button" className="tiny-add" onClick={() => setFolderEditor("new")} title="创建目录" aria-label="创建目录"><Plus size={14} /></button>}</p>
-        {data.folders.filter((folder) => folder.id !== "all").map((folder) => <div className="nav-manage-row" key={folder.id}><button type="button" className={`nav-item ${activeView === "all" && activeFolder === folder.id ? "selected" : ""}`} onClick={() => switchWorkspaceView("all", folder.id)}><span className="folder-icon"><LibraryIcon library={folder.iconLibrary} name={folder.iconName} /></span>{folder.name}<span className="nav-count">{folder.count}</span></button>{isEditor && <button type="button" className="nav-edit" onClick={() => setFolderEditor(folder)} title={`编辑${folder.name}`} aria-label={`编辑${folder.name}`}><Pencil size={13} /></button>}</div>)}
-      </nav>
-      <TagManagementPanel tags={data.tags} activeTag={activeTag} onSelect={(tag) => switchWorkspaceView("all", "all", activeTag === tag.id ? null : tag.id)} />
+       </nav>
       <div className="sidebar-bottom"><ThemeSwitcher mode={mode} setMode={setMode} /></div>
     </aside>
     {mobileNav && <button type="button" className="backdrop" onClick={() => setMobileNav(false)} aria-label="关闭导航" />}
     <main className="main">
-      <header className="topbar"><button type="button" className="icon-button mobile-menu" onClick={() => setMobileNav(true)} aria-label="打开导航"><Menu size={20} /></button><div className="breadcrumbs"><span>{isEditor ? "编辑" : "工作台"}</span><span>/</span><strong>{folderName}</strong>{activeTag && <><span>/</span><strong className="crumb-tag">#{data.tags.find((tag) => tag.id === activeTag)?.name}</strong></>}</div><div className="top-actions"><div className="top-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索书签..." /><kbd>⌘ K</kbd></div>{isEditor ? <a className="icon-button" href="/" title="返回主页" aria-label="返回主页"><LayoutGrid size={18} /></a> : <a className="icon-button" href="/edit" title="进入编辑页" aria-label="进入编辑页"><Pencil size={18} /></a>}<div className="menu-wrap"><button type="button" className="avatar mini" onClick={() => setShowMenu(!showMenu)} aria-label="打开账号菜单">{user.name.slice(0, 1).toUpperCase()}</button>{showMenu && <div className="user-menu"><strong>{user.name}</strong><span>{accountIdentifier(user.email)}</span><hr /><button type="button" onClick={() => { setShowAccount(true); setShowMenu(false); }}><Settings2 size={15} />账号设置</button><button type="button" disabled={loggingOut} onClick={() => void logout()}><LogOut size={15} />{loggingOut ? "退出中..." : "退出登录"}</button></div>}</div></div></header>
+       <header className="topbar"><button type="button" className="icon-button mobile-menu" onClick={() => setMobileNav(true)} aria-label="打开导航"><Menu size={20} /></button><div className="breadcrumbs"><span>{isEditor ? "编辑" : "工作台"}</span><span>/</span><strong>{folderName}</strong>{activeTags.length > 0 && <><span>/</span><strong className="crumb-tag">{activeTags.map((tagId) => `#${data.tags.find((tag) => tag.id === tagId)?.name}`).join(" ")}</strong></>}</div><div className="top-actions"><div className="top-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索书签..." /><kbd>⌘ K</kbd></div>{isEditor ? <a className="icon-button" href="/" title="返回主页" aria-label="返回主页"><LayoutGrid size={18} /></a> : <a className="icon-button" href="/edit" title="进入编辑页" aria-label="进入编辑页"><Pencil size={18} /></a>}<div className="menu-wrap"><button type="button" className="avatar mini" onClick={() => setShowMenu(!showMenu)} aria-label="打开账号菜单">{user.name.slice(0, 1).toUpperCase()}</button>{showMenu && <div className="user-menu"><strong>{user.name}</strong><span>{accountIdentifier(user.email)}</span><hr /><button type="button" onClick={() => { setShowAccount(true); setShowMenu(false); }}><Settings2 size={15} />账号设置</button><button type="button" disabled={loggingOut} onClick={() => void logout()}><LogOut size={15} />{loggingOut ? "退出中..." : "退出登录"}</button></div>}</div></div></header>
       <section className="content">
-        {activeView === "discover" ? <>
+          {activeView !== "discover" && activeView !== "sites" && <TopCategoryFilter folders={data.folders} tags={data.tags} activeFolder={activeFolder} activeTags={activeTags} tagMatchMode={tagMatchMode} onFolderSelect={(folder) => switchWorkspaceView("all", folder)} onTagSelect={(tags) => { setActiveTags(tags); setBrowsePage(1); }} onTagMatchModeChange={(mode) => { setTagMatchMode(mode); setBrowsePage(1); }} />}
+         {activeView === "discover" ? <>
           <div className="section-heading"><div><h2>{discoverMode === "collections" ? "共享合集" : "单条分享"}</h2><span>{discoverMode === "collections" ? sharedCollections.length : publications.length} 个公开内容</span></div><div className="discovery-tabs" role="tablist" aria-label="发现内容类型"><button role="tab" aria-selected={discoverMode === "collections"} className={discoverMode === "collections" ? "active" : ""} onClick={() => setDiscoverMode("collections")}>共享合集</button><button role="tab" aria-selected={discoverMode === "links"} className={discoverMode === "links" ? "active" : ""} onClick={() => setDiscoverMode("links")}>单条分享</button></div></div>
           {pageLoading ? <LoadingState /> : pageError ? <div className="empty"><Archive size={30} /><strong>分享加载失败</strong><span>{pageError}</span><button className="secondary-button" onClick={() => void loadDiscover()}>重新加载</button></div> : discoverMode === "collections" ? sharedCollections.length ? <SharedCollectionGrid collections={sharedCollections} savedIds={savedCollectionIds} canSave={isEditor} onSave={(collection) => void saveCollection(collection)} /> : <div className="empty"><Compass size={30} /><strong>暂时没有共享合集</strong><span>用户将个人标签发布为合集后会展示在这里。</span></div> : publications.length ? <DiscoveryGrid publications={publications} savedIds={savedPublicationIds} canSave={isEditor} onSave={(publication) => void saveSharedBookmark(publication)} /> : <div className="empty"><Compass size={30} /><strong>暂时没有单条分享</strong><span>个人书签不会出现在这里，只有主动分享的内容才会展示。</span></div>}
         </> : activeView === "sites" ? <>
           <div className="section-heading"><div><h2>网站</h2><span>{data.sites.length} 个网站</span></div>{isEditor && <button className="secondary-button" onClick={() => setSiteEditor("new")}><Plus size={15} />新建网站</button>}</div>
           <SiteGroups sites={data.sites} bookmarks={data.bookmarks} tags={data.tags} editable={isEditor} onAddLink={(siteId) => openAddBookmark(siteId)} onEdit={setSiteEditor} />
         </> : <>
-          <div className="section-heading"><div><h2>{activeTag ? `#${data.tags.find((tag) => tag.id === activeTag)?.name}` : folderName}</h2><span>{pageInfo.total} 个书签</span></div><div className="view-actions"><div className="sort-wrap"><SlidersHorizontal size={15} /><select value={activeView === "recent" ? "recent" : sort} disabled={activeView === "recent"} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="recent">最近添加</option><option value="clicks">访问最多</option><option value="az">名称排序</option></select></div>{!isEditor && <div className="display-toggle" aria-label="展示方式"><button type="button" className={displayMode === "grid" ? "active" : ""} onClick={() => setDisplayMode("grid")} title="大图展示" aria-label="大图展示"><LayoutGrid size={16} /></button><button type="button" className={displayMode === "circle" ? "active" : ""} onClick={() => setDisplayMode("circle")} title="圆圈展示" aria-label="圆圈展示"><CircleDot size={16} /></button><button type="button" className={displayMode === "compact" ? "active" : ""} onClick={() => setDisplayMode("compact")} title="细列表展示" aria-label="细列表展示"><Rows3 size={16} /></button><button type="button" className={displayMode === "list" ? "active" : ""} onClick={() => setDisplayMode("list")} title="列表展示" aria-label="列表展示"><List size={16} /></button><button type="button" className={displayMode === "table" ? "active" : ""} onClick={() => setDisplayMode("table")} title="表格展示" aria-label="表格展示"><Table2 size={16} /></button></div>}{isEditor && <button type="button" className="icon-button" onClick={() => openAddBookmark()} title="添加书签" aria-label="添加书签"><Plus size={18} /></button>}</div></div>
+           <div className="section-heading"><div><h2>{activeTags.length ? activeTags.map((tagId) => `#${data.tags.find((tag) => tag.id === tagId)?.name}`).join(" ") : folderName}</h2><span>{pageInfo.total} 个书签</span></div><div className="view-actions"><div className="sort-wrap"><SlidersHorizontal size={15} /><select value={activeView === "recent" ? "recent" : sort} disabled={activeView === "recent"} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="recent">最近添加</option><option value="clicks">访问最多</option><option value="az">名称排序</option></select></div>{!isEditor && <div className="display-toggle" aria-label="展示方式"><button type="button" className={displayMode === "grid" ? "active" : ""} onClick={() => setDisplayMode("grid")} title="大图展示" aria-label="大图展示"><LayoutGrid size={16} /></button><button type="button" className={displayMode === "circle" ? "active" : ""} onClick={() => setDisplayMode("circle")} title="圆圈展示" aria-label="圆圈展示"><CircleDot size={16} /></button><button type="button" className={displayMode === "compact" ? "active" : ""} onClick={() => setDisplayMode("compact")} title="细列表展示" aria-label="细列表展示"><Rows3 size={16} /></button><button type="button" className={displayMode === "list" ? "active" : ""} onClick={() => setDisplayMode("list")} title="列表展示" aria-label="细列表展示"><List size={16} /></button><button type="button" className={displayMode === "table" ? "active" : ""} onClick={() => setDisplayMode("table")} title="表格展示" aria-label="表格展示"><Table2 size={16} /></button></div>}{isEditor && <button type="button" className="icon-button" onClick={() => openAddBookmark()} title="添加书签" aria-label="添加书签"><Plus size={18} /></button>}</div></div>
           {isBookmarkEditor ? pageLoading ? <LoadingState /> : pageError ? <div className="empty"><Archive size={30} /><strong>书签加载失败</strong><span>{pageError}</span><button className="secondary-button" onClick={() => void loadPage(pageInfo.page)}>重新加载</button></div> : visible.length ? <BookmarkEditMode bookmarks={visible} onEdit={setEditingBookmark} onDelete={(bookmark) => void deleteBookmark(bookmark)} onFavorite={(bookmark) => void toggleFavorite(bookmark)} onShare={(bookmark) => void toggleShare(bookmark)} /> : <div className="empty"><Archive size={30} /><strong>{activeView === "favorites" ? "还没有收藏的书签" : "还没有匹配的书签"}</strong><span>{activeView === "favorites" ? "先回到全部书签收藏内容" : "试试其他关键词或添加一个新书签"}</span><button className="primary-button" onClick={() => openAddBookmark()}><Plus size={16} />添加书签</button></div> : loading || pageLoading ? <LoadingState /> : pageError ? <div className="empty"><Archive size={30} /><strong>书签加载失败</strong><span>{pageError}</span><button className="secondary-button" onClick={() => void loadPage(pageInfo.page)}>重新加载</button></div> : visible.length ? <>
-            {displayMode === "grid" && <div className="bookmark-grid" role="list" aria-label="大图书签">{visible.map((bookmark) => <BookmarkCard key={bookmark.id} bookmark={bookmark} tags={data.tags} sites={data.sites} onFavorite={() => void toggleFavorite(bookmark)} onShare={() => void toggleShare(bookmark)} onClick={() => clickBookmark(bookmark)} />)}</div>}
+             <div className="bookmark-display-surface" ref={displaySurfaceRef}>
+             {displayMode === "grid" && <div className="bookmark-grid" role="list" aria-label="大图书签">{visible.map((bookmark) => <BookmarkCard key={bookmark.id} bookmark={bookmark} tags={data.tags} sites={data.sites} onFavorite={() => void toggleFavorite(bookmark)} onShare={() => void toggleShare(bookmark)} onClick={() => clickBookmark(bookmark)} />)}</div>}
             {displayMode === "circle" && <div className="bookmark-circle-grid" role="list" aria-label="圆圈书签">{visible.map((bookmark) => <BookmarkCircle key={bookmark.id} bookmark={bookmark} onClick={() => clickBookmark(bookmark)} />)}</div>}
             {displayMode === "compact" && <div className="bookmark-compact-list" role="list" aria-label="细列表书签">{visible.map((bookmark) => <BookmarkCompactRow key={bookmark.id} bookmark={bookmark} onClick={() => clickBookmark(bookmark)} />)}</div>}
             {displayMode === "list" && <div className="bookmark-list" role="list" aria-label="列表书签">{visible.map((bookmark) => <BookmarkListRow key={bookmark.id} bookmark={bookmark} tags={data.tags} sites={data.sites} onFavorite={() => void toggleFavorite(bookmark)} onShare={() => void toggleShare(bookmark)} onClick={() => clickBookmark(bookmark)} />)}</div>}
-            {displayMode === "table" && <BookmarkTable bookmarks={visible} folders={data.folders} tags={data.tags} sites={data.sites} onFavorite={toggleFavorite} onShare={toggleShare} onClick={clickBookmark} />}
-            {pageInfo.totalPages > 0 && <div className="pagination"><span>第 {pageInfo.page} / {pageInfo.totalPages} 页，共 {pageInfo.total} 个</span><div><button className="icon-button" disabled={pageLoading || pageInfo.page <= 1} onClick={() => void loadPage(pageInfo.page - 1)} title="上一页" aria-label="上一页"><ChevronLeft size={17} /></button><button className="icon-button" disabled={pageLoading || pageInfo.page >= pageInfo.totalPages} onClick={() => void loadPage(pageInfo.page + 1)} title="下一页" aria-label="下一页"><ChevronRight size={17} /></button></div></div>}
+             {displayMode === "table" && <BookmarkTable bookmarks={visible} folders={data.folders} tags={data.tags} sites={data.sites} onFavorite={toggleFavorite} onShare={toggleShare} onClick={clickBookmark} />}
+             </div>
+             {pageInfo.totalPages > 0 && <div className="pagination"><span>第 {pageInfo.page} / {pageInfo.totalPages} 页，共 {pageInfo.total} 个</span><div><button className="icon-button" disabled={pageInfo.page <= 1} onClick={() => setBrowsePage((current) => Math.max(1, current - 1))} title="上一页" aria-label="上一页"><ChevronLeft size={17} /></button><button className="icon-button" disabled={pageInfo.page >= pageInfo.totalPages} onClick={() => setBrowsePage((current) => current + 1)} title="下一页" aria-label="下一页"><ChevronRight size={17} /></button></div></div>}
           </> : <div className="empty"><Archive size={30} /><strong>{activeView === "favorites" ? "还没有收藏的书签" : "还没有匹配的书签"}</strong><span>{activeView === "favorites" ? "收藏操作请进入编辑页完成" : "试试其他关键词，或进入编辑页添加新书签"}</span><a className="primary-button" href="/edit"><Pencil size={16} />进入编辑页</a></div>}
         </>}
         <footer><span>已同步 · 刚刚</span><span><Link2 size={13} /> API 已就绪</span></footer>
@@ -750,6 +815,38 @@ function SharedCollectionGrid({ collections, savedIds, canSave, onSave }: { coll
 function SiteGroups({ sites, bookmarks, tags, editable, onAddLink, onEdit }: { sites: Site[]; bookmarks: BookmarkType[]; tags: TagType[]; editable: boolean; onAddLink: (siteId: string) => void; onEdit: (site: Site) => void }) {
   if (!sites.length) return <div className="empty"><Globe2 size={30} /><strong>还没有网站</strong><span>新建网站，或添加书签时让系统自动归站。</span></div>;
   return <div className="site-groups">{sites.map((site) => { const items = bookmarks.filter((bookmark) => bookmark.siteId === site.id); return <section className="site-group" key={site.id}><header><div className="favicon"><img src={site.favicon} alt="" /></div><div><strong>{site.name}</strong><span>{site.domain} · {items.length} 个子链接</span></div>{editable && <div className="site-actions"><button className="icon-button" onClick={() => onEdit(site)} title={`编辑${site.name}`} aria-label={`编辑${site.name}`}><Pencil size={14} /></button><button className="icon-button" onClick={() => onAddLink(site.id)} title={`为${site.name}添加子链接`} aria-label={`为${site.name}添加子链接`}><Plus size={15} /></button></div>}</header>{site.tags.length > 0 && <div className="site-tags">{site.tags.map((id) => { const tag = tags.find((item) => item.id === id); return tag ? <span key={id} style={{ "--tag-color": tag.color } as React.CSSProperties}>#{tag.name}</span> : null; })}</div>}<div className="site-links">{items.map((bookmark) => <a href={bookmark.url} target="_blank" rel="noreferrer" key={bookmark.id}><span>{bookmark.title}</span><ArrowUpRight size={13} /></a>)}</div></section>; })}</div>;
+}
+
+function TopCategoryFilter({ folders, tags, activeFolder, activeTags, tagMatchMode, onFolderSelect, onTagSelect, onTagMatchModeChange }: { folders: DashboardData["folders"]; tags: TagType[]; activeFolder: string; activeTags: string[]; tagMatchMode: TagMatchMode; onFolderSelect: (folder: string) => void; onTagSelect: (tags: string[]) => void; onTagMatchModeChange: (mode: TagMatchMode) => void }) {
+  const [panel, setPanel] = useState<"folders" | "tags" | null>(null);
+  const [folderSearch, setFolderSearch] = useState("");
+  const [tagSearch, setTagSearch] = useState("");
+  const [draftTags, setDraftTags] = useState(activeTags);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const matchingFolders = folders.filter((folder) => folder.id === "all" || folder.name.toLocaleLowerCase().includes(folderSearch.trim().toLocaleLowerCase()));
+  const matchingTags = tags.filter((tag) => tag.name.toLocaleLowerCase().includes(tagSearch.trim().toLocaleLowerCase()));
+  const openTags = () => { setDraftTags(activeTags); setPanel("tags"); };
+  useEffect(() => {
+    if (!panel) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (panelRef.current?.contains(event.target as Node)) return;
+      setDraftTags(activeTags);
+      setTagSearch("");
+      setFolderSearch("");
+      setPanel(null);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [activeTags, panel]);
+  return <div className="top-category-nav" aria-label="目录和标签筛选"><div className="category-summary"><span className="category-current">{activeTags.length ? `${activeTags.length} 个标签` : activeFolder === "all" ? "全部书签" : folders.find((folder) => folder.id === activeFolder)?.name || "全部书签"}</span><button type="button" className={panel === "folders" ? "active" : ""} onClick={() => setPanel((current) => current === "folders" ? null : "folders")}>目录<small>{folders.filter((folder) => folder.id !== "all").length}</small></button><button type="button" className={panel === "tags" ? "active" : ""} onClick={openTags}>标签<small>{tags.length}{activeTags.length ? ` · 已选${activeTags.length}` : ""}</small></button>{(activeFolder !== "all" || activeTags.length > 0) && <button type="button" className="category-clear" onClick={() => { onFolderSelect("all"); onTagSelect([]); setPanel(null); }}>清除筛选</button>}</div>{panel && <div className="category-panel" ref={panelRef}>{panel === "folders" ? <><strong>选择目录</strong><input className="category-panel-search" value={folderSearch} onChange={(event) => setFolderSearch(event.target.value)} placeholder="搜索目录" aria-label="搜索目录" autoFocus /><div className="category-panel-list">{matchingFolders.map((folder) => <button type="button" key={folder.id} className={activeFolder === folder.id && !activeTags.length ? "active" : ""} onClick={() => { onFolderSelect(folder.id); setPanel(null); }}><LibraryIcon library={folder.iconLibrary} name={folder.iconName} size={15} /><span>{folder.name}</span><small>{folder.count}</small></button>)}</div></> : <><strong>选择标签（可多选）</strong>{draftTags.length > 0 && <div className="selected-filter-tags">{draftTags.map((id) => { const tag = tags.find((item) => item.id === id); return tag ? <button type="button" key={id} onClick={() => setDraftTags((current) => current.filter((item) => item !== id))}>#{tag.name}<X size={12} /></button> : null; })}</div>}<input className="category-panel-search" value={tagSearch} onChange={(event) => setTagSearch(event.target.value)} placeholder="搜索标签" aria-label="搜索标签" autoFocus /><div className="category-panel-list tag-panel-list">{matchingTags.map((tag) => <button type="button" key={tag.id} className={draftTags.includes(tag.id) ? "active" : ""} onClick={() => setDraftTags((current) => current.includes(tag.id) ? current.filter((id) => id !== tag.id) : [...current, tag.id])}><span className="tag-dot" style={{ background: tag.color }} /><span>{tag.name}</span><small>{tag.count}</small></button>)}</div><div className="tag-match-mode" role="group" aria-label="标签匹配方式"><span>匹配方式</span><button type="button" className={tagMatchMode === "and" ? "active" : ""} aria-pressed={tagMatchMode === "and"} onClick={() => onTagMatchModeChange("and")}>交集</button><button type="button" className={tagMatchMode === "or" ? "active" : ""} aria-pressed={tagMatchMode === "or"} onClick={() => onTagMatchModeChange("or")}>并集</button></div><div className="category-panel-actions"><button type="button" className="secondary-button" onClick={() => setDraftTags([])}>清空</button><button type="button" className="primary-button" onClick={() => { onTagSelect(draftTags); setPanel(null); }}>应用筛选</button></div></>}</div>}</div>;
+}
+
+function TopCategoryNav({ folders, tags, activeFolder, activeTag, onFolderSelect, onTagSelect }: { folders: DashboardData["folders"]; tags: TagType[]; activeFolder: string; activeTag: string | null; onFolderSelect: (folder: string) => void; onTagSelect: (tag: string | null) => void }) {
+  const [openPanel, setOpenPanel] = useState<"folders" | "tags" | null>(null);
+  const [tagSearch, setTagSearch] = useState("");
+  const filteredTags = tags.filter((tag) => tag.name.toLocaleLowerCase().includes(tagSearch.trim().toLocaleLowerCase()));
+  const closePanel = () => setOpenPanel(null);
+  return <div className="top-category-nav" aria-label="目录和标签导航"><div className="category-summary"><span className="category-current">{activeTag ? `#${tags.find((tag) => tag.id === activeTag)?.name}` : activeFolder === "all" ? "全部书签" : folders.find((folder) => folder.id === activeFolder)?.name || "全部书签"}</span><button type="button" className={openPanel === "folders" ? "active" : ""} onClick={() => setOpenPanel((current) => current === "folders" ? null : "folders")}>目录<small>{folders.filter((folder) => folder.id !== "all").length}</small></button><button type="button" className={openPanel === "tags" ? "active" : ""} onClick={() => setOpenPanel((current) => current === "tags" ? null : "tags")}>标签<small>{tags.length}</small></button>{(activeFolder !== "all" || activeTag) && <button type="button" className="category-clear" aria-label="清除标签筛选" onClick={() => { onFolderSelect("all"); onTagSelect(null); closePanel(); }}>清除筛选</button>}</div>{openPanel && <div className="category-panel">{openPanel === "folders" ? <><strong>选择目录</strong><div className="category-panel-list"><button type="button" className={activeFolder === "all" && !activeTag ? "active" : ""} onClick={() => { onFolderSelect("all"); closePanel(); }}>全部书签</button>{folders.filter((folder) => folder.id !== "all").map((folder) => <button type="button" key={folder.id} className={activeFolder === folder.id && !activeTag ? "active" : ""} onClick={() => { onFolderSelect(folder.id); closePanel(); }}><LibraryIcon library={folder.iconLibrary} name={folder.iconName} size={15} /><span>{folder.name}</span><small>{folder.count}</small></button>)}</div></> : <><strong>选择标签</strong><input className="category-panel-search" value={tagSearch} onChange={(event) => setTagSearch(event.target.value)} placeholder="搜索标签" aria-label="搜索标签" autoFocus /><div className="category-panel-list tag-panel-list"><button type="button" className={!activeTag ? "active" : ""} onClick={() => { onTagSelect(null); closePanel(); }}>全部标签</button>{filteredTags.map((tag) => <button type="button" key={tag.id} className={activeTag === tag.id ? "active" : ""} onClick={() => { onTagSelect(activeTag === tag.id ? null : tag.id); closePanel(); }}><span className="tag-dot" style={{ background: tag.color }} /><span>{tag.name}</span><small>{tag.count}</small></button>)}</div></>}</div>}</div>;
 }
 
 function TagManagementPanel({ tags, activeTag, onSelect }: { tags: TagType[]; activeTag: string | null; onSelect: (tag: TagType) => void }) {
