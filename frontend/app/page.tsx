@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
-import { Activity, Archive, ArrowUpRight, BarChart3, Bell, Bookmark, BookOpen, Briefcase, CalendarDays, Camera, Check, ChevronLeft, ChevronRight, CircleDot, Clock3, Cloud, Code2, Compass, Copy, Database, Download, FileText, Film, Flag, Folder, FolderOpen, Gamepad2, Globe2, GraduationCap, Hammer, Headphones, Heart, History, Image, Inbox, KeyRound, Lightbulb, Link, Link2, Lock, LayoutGrid, LifeBuoy, List, LogOut, Map as MapIcon, Menu, MessageCircle, Monitor, Moon, Music, Package, Palette, PanelLeftClose, PanelLeftOpen, Pencil, Plane, Plus, Rocket, Rows3, Rss, Search, Settings2, Share2, Shield, ShoppingBag, SlidersHorizontal, Sparkles, Star, Sun, Tag, Terminal, Table2, ThumbsUp, Trash2, Trophy, Tv, Users, Wallet, Wifi, Wrench, X, type LucideIcon } from "lucide-react";
+import { Activity, Archive, ArrowUpRight, BarChart3, Bell, Bookmark, BookOpen, Briefcase, CalendarDays, Camera, Check, ChevronLeft, ChevronRight, CircleDot, Clock3, Cloud, Code2, Compass, Copy, Database, Download, FileText, Film, Flag, Folder, FolderOpen, Gamepad2, Globe2, GraduationCap, Hammer, Headphones, Heart, History, Image, Inbox, KeyRound, Lightbulb, Link, Link2, Lock, LayoutGrid, LifeBuoy, List, LogOut, Map as MapIcon, Menu, MessageCircle, Monitor, Music, Package, Palette, PanelLeftClose, PanelLeftOpen, Pencil, Plane, Plus, Rocket, Rows3, Rss, Search, Settings2, Share2, Shield, ShoppingBag, SlidersHorizontal, Sparkles, Star, Tag, Terminal, Table2, ThumbsUp, Trash2, Trophy, Tv, Users, Wallet, Wifi, Wrench, X, type LucideIcon } from "lucide-react";
 import type { Bookmark as BookmarkType, DashboardData } from "../lib/types";
 import { apiKeyCreatedResponse, apiKeyListResponse, bookmarkBatchWriteResponse, bookmarkPageResponse, bookmarkResponse, dashboardResponse, folderResponse, fromPromise, publicationListResponse, sessionResponse, sharedCollectionListResponse, sharedCollectionResponse, siteResponse, tagResponse, type ApiKeyResponse, type BookmarkPageResponse, type Folder as FolderType, type IconLibrary, type JsonValue, type Publication, type SharedCollection, type Site, type Tag as TagType, type UserResponse } from "@loomark/shared";
 import { authClient } from "../lib/auth-client";
 import { useTheme, type ThemeMode } from "./theme-provider";
+import { THEME_PRESETS, type ThemeId } from "./theme-config";
 import { useWorkspaceMode } from "./workspace-mode";
 
 const initial: DashboardData = { bookmarks: [], folders: [], tags: [], sites: [], totalClicks: 0 };
@@ -52,7 +53,11 @@ function IconNamePicker({ library, value, onChange, label }: { library: IconLibr
 }
 
 function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  return globalThis.fetch(input, { ...init, credentials: "include" });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 10000);
+  return globalThis.fetch(input, { ...init, credentials: "include", signal: controller.signal }).finally(() => {
+    window.clearTimeout(timeoutId);
+  });
 }
 
 type ManagementSection = "bookmarks" | "folders" | "tags" | "sites" | "sharing";
@@ -118,7 +123,7 @@ function pageSlice<T>(items: T[], state: QueryState): { items: T[]; page: number
 }
 
 export default function Home() {
-  const { mode, setMode } = useTheme();
+  const { mode, setMode, themeId, setThemeId, refreshPreferences } = useTheme();
   const workspaceMode = useWorkspaceMode();
   const isEditor = workspaceMode === "edit";
   const [user, setUser] = useState<UserResponse | null>(null);
@@ -146,24 +151,11 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [displayMode, setDisplayMode] = useState<"grid" | "circle" | "compact" | "list" | "table">(() => {
-    if (typeof window === "undefined") return "grid";
-    const saved = window.localStorage.getItem("bookmark-nav-display-mode");
-    return saved === "circle" || saved === "compact" || saved === "list" || saved === "table" ? saved : "grid";
-  });
+  const [displayMode, setDisplayMode] = useState<"grid" | "circle" | "compact" | "list" | "table">("grid");
   const [pageInfo, setPageInfo] = useState<BookmarkPageResponse>({ items: [], page: 1, pageSize: 9, total: 0, totalPages: 0 });
   const [pageSize, setPageSize] = useState(9);
   const [browsePage, setBrowsePage] = useState(1);
-  const [recentlyVisitedIds, setRecentlyVisitedIds] = useState<Set<string>>(() => {
-    if (typeof window === "undefined") return new Set();
-    const saved = window.localStorage.getItem("bookmark-nav-recently-visited");
-    try {
-      const parsed: unknown = saved ? JSON.parse(saved) : [];
-      return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
-    } catch {
-      return new Set();
-    }
-  });
+  const [recentlyVisitedIds, setRecentlyVisitedIds] = useState<Set<string>>(() => new Set());
   const [publications, setPublications] = useState<Publication[]>([]);
   const [sharedCollections, setSharedCollections] = useState<SharedCollection[]>([]);
   const [discoverMode, setDiscoverMode] = useState<"collections" | "links">("collections");
@@ -184,14 +176,17 @@ export default function Home() {
   }
 
   async function loadSession(): Promise<void> {
-    const responseResult = await fromPromise(apiFetch("/api/auth/session", { cache: "no-store" }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
-    if (!responseResult.ok) { setAuthLoading(false); return; }
-    const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
-    if (responseResult.value.ok && bodyResult.ok) {
-      const parsed = sessionResponse.safeParse(bodyResult.value);
-      if (parsed.success) setUser(parsed.data.user);
+    try {
+      const responseResult = await fromPromise(apiFetch("/api/auth/session", { cache: "no-store" }), () => ({ code: "NETWORK_ERROR", message: "无法连接到服务器" }));
+      if (!responseResult.ok) return;
+      const bodyResult = await fromPromise(responseResult.value.json() as Promise<JsonValue>, () => ({ code: "INVALID_RESPONSE", message: "服务器返回无效响应" }));
+      if (responseResult.value.ok && bodyResult.ok) {
+        const parsed = sessionResponse.safeParse(bodyResult.value);
+        if (parsed.success) setUser(parsed.data.user);
+      }
+    } finally {
+      setAuthLoading(false);
     }
-    setAuthLoading(false);
   }
 
   async function refreshDashboard() {
@@ -206,7 +201,11 @@ export default function Home() {
   }
 
   useEffect(() => { void loadSession(); }, []);
-  useEffect(() => { if (user) void refreshDashboard(); }, [user]);
+  useEffect(() => {
+    if (!user) return;
+    void refreshDashboard();
+    void refreshPreferences();
+  }, [refreshPreferences, user]);
   async function loadPage(page: number): Promise<void> {
     const requestId = ++pageRequestId.current;
     setPageLoading(true);
@@ -316,6 +315,21 @@ export default function Home() {
     window.addEventListener("resize", updatePageSize);
     return () => { observer?.disconnect(); window.removeEventListener("resize", updatePageSize); };
   }, [activeView, displayMode, sidebarCollapsed, user, isEditor]);
+  useEffect(() => {
+    const savedDisplayMode = window.localStorage.getItem("bookmark-nav-display-mode");
+    if (savedDisplayMode === "circle" || savedDisplayMode === "compact" || savedDisplayMode === "list" || savedDisplayMode === "table")
+      setDisplayMode(savedDisplayMode);
+    const savedVisited = window.localStorage.getItem("bookmark-nav-recently-visited");
+    if (savedVisited) {
+      try {
+        const parsed: unknown = JSON.parse(savedVisited);
+        if (Array.isArray(parsed))
+          setRecentlyVisitedIds(new Set(parsed.filter((id): id is string => typeof id === "string")));
+      } catch {
+        // Ignore malformed local browser state and keep the empty default.
+      }
+    }
+  }, []);
   useEffect(() => { window.localStorage.setItem("bookmark-nav-display-mode", displayMode); }, [displayMode]);
 
   function switchWorkspaceView(view: typeof activeView, folder = "all", tag: string | null = null): void {
@@ -440,6 +454,7 @@ export default function Home() {
     <div className="management-shell">
       <aside className={`management-sidebar ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
         <div className="brand"><span className="brand-mark"><Bookmark size={17} strokeWidth={2.6} /></span><span>bookmark-nav</span><button type="button" className="icon-button sidebar-toggle" onClick={() => setSidebarCollapsed((current) => !current)} aria-label={sidebarCollapsed ? "展开导航" : "收起导航"} title={sidebarCollapsed ? "展开导航" : "收起导航"}>{sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button></div>
+        <div className="theme-sidebar-accent" aria-hidden="true"><span className="theme-sidebar-code" /><span className="theme-sidebar-rule" /><i /></div>
         <nav className="management-nav" aria-label="管理栏目">
           <button type="button" className={managementSection === "bookmarks" ? "selected" : ""} onClick={() => setManagementSection("bookmarks")}><Bookmark size={16} />书签管理<span>{data.bookmarks.length}</span></button>
           <button type="button" className={managementSection === "folders" ? "selected" : ""} onClick={() => setManagementSection("folders")}><FolderOpen size={16} />目录管理<span>{data.folders.filter((folder) => folder.id !== "all").length}</span></button>
@@ -448,7 +463,7 @@ export default function Home() {
           <button type="button" className={managementSection === "sharing" ? "selected" : ""} onClick={() => setManagementSection("sharing")}><Share2 size={16} />分享管理<span>{sharedCollections.length + publications.length}</span></button>
         </nav>
         <div className="management-sidebar-bottom">
-          <ThemeSwitcher mode={mode} setMode={setMode} />
+          <ThemeSwitcher mode={mode} setMode={setMode} themeId={themeId} setThemeId={setThemeId} />
           <a className="secondary-button management-back" href="/"><ChevronLeft size={15} />返回主页</a>
         </div>
       </aside>
@@ -485,6 +500,7 @@ export default function Home() {
     {operationMessage && <div className="operation-toast" role="status">{operationMessage}</div>}
     <aside className={`sidebar ${mobileNav ? "mobile-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <div className="brand"><span className="brand-mark"><Bookmark size={17} strokeWidth={2.6} /></span><span>bookmark-nav</span><button type="button" className="icon-button sidebar-toggle" onClick={() => setSidebarCollapsed((current) => !current)} aria-label={sidebarCollapsed ? "展开导航" : "收起导航"} title={sidebarCollapsed ? "展开导航" : "收起导航"}>{sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button><button type="button" className="icon-button sidebar-close" onClick={() => setMobileNav(false)} aria-label="关闭导航"><X size={18} /></button></div>
+      <div className="theme-sidebar-accent" aria-hidden="true"><span className="theme-sidebar-code" /><span className="theme-sidebar-rule" /><i /></div>
       <nav className="nav">
         <p className="nav-label">个人空间</p>
          <button type="button" className={`nav-item ${activeView === "all" && activeFolder === "all" && !activeTags.length ? "selected" : ""}`} onClick={() => switchWorkspaceView("all")}><LayoutGrid size={17} />我的书签<span className="nav-count">{data.bookmarks.length}</span></button>
@@ -498,7 +514,7 @@ export default function Home() {
          <p className="nav-label folder-label">共享空间</p>
         <button type="button" className={`nav-item ${activeView === "discover" ? "selected" : ""}`} onClick={() => switchWorkspaceView("discover")}><Compass size={17} />发现</button>
        </nav>
-      <div className="sidebar-bottom"><ThemeSwitcher mode={mode} setMode={setMode} /></div>
+      <div className="sidebar-bottom"><ThemeSwitcher mode={mode} setMode={setMode} themeId={themeId} setThemeId={setThemeId} /></div>
     </aside>
     {mobileNav && <button type="button" className="backdrop" onClick={() => setMobileNav(false)} aria-label="关闭导航" />}
     <main className="main">
@@ -896,9 +912,21 @@ function BookmarkEditMode({ bookmarks, onEdit, onDelete, onFavorite, onShare }: 
   return <div className="bookmark-edit-mode" role="group" aria-label="当前页面书签编辑模式"><div className="edit-mode-hint"><Pencil size={15} /><span>编辑模式：收藏、分享、修改和删除都集中在这里处理</span></div><div className="bookmark-edit-grid">{bookmarks.map((bookmark) => <article className="bookmark-edit-item" key={bookmark.id}><div className="inline-editor-heading"><div className="favicon"><img src={bookmark.favicon} alt="" /></div><div><strong>{bookmark.title}</strong><span>{bookmark.domain}</span></div></div><div className="bookmark-edit-badges"><button className={bookmark.publicationId ? "shared-active" : "tag-action-edit"} onClick={() => onShare(bookmark)} title={bookmark.publicationId ? `取消分享${bookmark.title}` : `分享${bookmark.title}`} aria-label={bookmark.publicationId ? `取消分享${bookmark.title}` : `分享${bookmark.title}`}><Share2 size={14} /></button><button className={bookmark.isFavorite ? "favorite-active" : "tag-action-edit"} onClick={() => onFavorite(bookmark)} title={bookmark.isFavorite ? `取消收藏${bookmark.title}` : `收藏${bookmark.title}`} aria-label={bookmark.isFavorite ? `取消收藏${bookmark.title}` : `收藏${bookmark.title}`}><Star size={14} fill={bookmark.isFavorite ? "currentColor" : "none"} /></button><button className="tag-action-edit" onClick={() => onEdit(bookmark)} title={`编辑${bookmark.title}`} aria-label={`编辑${bookmark.title}`}><Pencil size={14} /></button><button className="tag-action-delete" onClick={() => onDelete(bookmark)} title={`删除${bookmark.title}`} aria-label={`删除${bookmark.title}`}><X size={14} /></button></div></article>)}</div></div>;
 }
 
-function ThemeSwitcher({ mode, setMode }: { mode: ThemeMode; setMode: (mode: ThemeMode) => void }) {
-  const options: readonly { value: ThemeMode; label: string; icon: typeof Sun }[] = [{ value: "system", label: "跟随系统", icon: Monitor }, { value: "light", label: "浅色主题", icon: Sun }, { value: "dark", label: "深色主题", icon: Moon }];
-  return <div className="theme-switcher" aria-label="主题设置">{options.map(({ value, label, icon: Icon }) => <button key={value} className={mode === value ? "active" : ""} onClick={() => setMode(value)} title={label} aria-label={label}><Icon size={14} /></button>)}</div>;
+function ThemeSwitcher({ mode, setMode, themeId, setThemeId }: { mode: ThemeMode; setMode: (mode: ThemeMode) => void; themeId: ThemeId; setThemeId: (themeId: ThemeId) => void }) {
+  const selection = mode === "system" && (themeId === "default" || themeId === "midnight") ? "system" : themeId;
+  function selectTheme(value: string): void {
+    if (value === "system") {
+      setThemeId("default");
+      setMode("system");
+      return;
+    }
+    const next = value as ThemeId;
+    setThemeId(next);
+    if (next === "default") setMode("light");
+    else if (next === "midnight") setMode("dark");
+    else setMode("system");
+  }
+  return <div className="theme-switcher single" aria-label="主题设置"><select value={selection} aria-label="选择主题" onChange={(event) => selectTheme(event.target.value)}><option value="system">跟随系统</option>{THEME_PRESETS.map((theme) => <option value={theme.id} key={theme.id}>{theme.name}</option>)}</select></div>;
 }
 
 function GoogleLogo() {

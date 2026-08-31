@@ -27,6 +27,7 @@ const environment = z.object({
     .default(5000),
   BETTER_AUTH_SECRET: z.string().min(32).default(developmentAuthSecret),
   BETTER_AUTH_URL: z.string().url().default("http://localhost:3000"),
+  BETTER_AUTH_TRUSTED_ORIGINS: z.string().default(""),
   GOOGLE_CLIENT_ID: z.string().default(""),
   GOOGLE_CLIENT_SECRET: z.string().default(""),
   GOOGLE_REDIRECT_URI: z.string().url().optional(),
@@ -72,3 +73,21 @@ export const config = {
   ...parsed.data,
   GOOGLE_REDIRECT_URI: googleRedirectUri,
 };
+
+export function getBetterAuthTrustedOrigins(): string[] {
+  const configuredOrigins = config.BETTER_AUTH_TRUSTED_ORIGINS.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+    .map((origin) => new URL(origin).origin);
+  const developmentOrigins =
+    config.NODE_ENV === "production"
+      ? []
+      : ["http://localhost:3000", "http://127.0.0.1:3000"];
+  return Array.from(
+    new Set([
+      new URL(config.BETTER_AUTH_URL).origin,
+      ...developmentOrigins,
+      ...configuredOrigins,
+    ]),
+  );
+}

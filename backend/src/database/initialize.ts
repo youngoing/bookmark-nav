@@ -62,6 +62,13 @@ import {
   SEED_SHARED_COLLECTIONS,
   type DbSharedCollection,
 } from "./collections/shared-collections";
+import {
+  USER_PREFERENCES_COLLECTION_NAME,
+  USER_PREFERENCES_INDEXES,
+  USER_PREFERENCES_VALIDATOR,
+  getUserPreferencesCollectionFromDatabase,
+  type DbUserPreferences,
+} from "./collections/user-preferences";
 
 async function getCollectionInfo(
   database: Db,
@@ -150,6 +157,16 @@ async function migrateLegacyIconFields(
 export async function initializeDatabase(): Promise<void> {
   const database = await getDatabase();
   await initializeDbAuthCollections(database);
+  await initializeCollection<DbUserPreferences>(
+    database,
+    USER_PREFERENCES_COLLECTION_NAME,
+    USER_PREFERENCES_VALIDATOR,
+    USER_PREFERENCES_INDEXES,
+    getUserPreferencesCollectionFromDatabase(database),
+    [],
+    false,
+    true,
+  );
   await migrateLegacyIconFields(
     database,
     FOLDERS_COLLECTION_NAME,

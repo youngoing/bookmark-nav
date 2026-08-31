@@ -4,7 +4,7 @@ import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import type { OAuth2Tokens } from "better-auth/oauth2";
 import { genericOAuth, type GenericOAuthConfig } from "better-auth/plugins";
 import { ProxyAgent } from "undici";
-import { config } from "./config";
+import { config, getBetterAuthTrustedOrigins } from "./config";
 import { getDatabase } from "./db";
 import {
   DB_ACCOUNT_COLLECTION_NAME,
@@ -315,7 +315,7 @@ async function createBetterAuth() {
     appName: "bookmark-nav",
     baseURL: config.BETTER_AUTH_URL,
     secret: config.BETTER_AUTH_SECRET,
-    trustedOrigins: [new URL(config.BETTER_AUTH_URL).origin],
+    trustedOrigins: getBetterAuthTrustedOrigins(),
     database: mongodbAdapter(database, { transaction: false }),
     user: { modelName: DB_USER_COLLECTION_NAME },
     session: {

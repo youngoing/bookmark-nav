@@ -191,6 +191,31 @@ export type UserResponse = z.infer<typeof userResponse>;
 export type LoginInput = z.infer<typeof loginInput>;
 export type AccountUpdateInput = z.infer<typeof accountUpdateInput>;
 
+export const themeId = z.enum([
+  "default",
+  "midnight",
+  "sakura",
+  "forest",
+  "paper",
+  "cyber",
+  "eva-asuka",
+]);
+export const themeMode = z.enum(["system", "light", "dark"]);
+export const themePreferencesUpdateInput = z.object({
+  themeId,
+  themeMode,
+});
+export const themePreferencesResponse = themePreferencesUpdateInput.extend({
+  version: z.number().int().positive(),
+  updatedAt: z.string(),
+});
+export type ThemeId = z.infer<typeof themeId>;
+export type ThemeMode = z.infer<typeof themeMode>;
+export type ThemePreferencesUpdateInput = z.infer<
+  typeof themePreferencesUpdateInput
+>;
+export type ThemePreferencesResponse = z.infer<typeof themePreferencesResponse>;
+
 export const apiKeyCreateInput = z.object({
   name: z.string().trim().min(1).max(60),
 });
@@ -312,6 +337,7 @@ export const API_PATHS = {
   folders: "/api/v1/folders",
   tags: "/api/v1/tags",
   account: "/api/v1/account",
+  preferences: "/api/v1/preferences",
   session: "/api/auth/session",
   login: "/api/auth/login",
   trpc: "/api/trpc",

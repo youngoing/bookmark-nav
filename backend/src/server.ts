@@ -23,6 +23,7 @@ import {
   sharedCollectionPublishInput,
   tagCreateInput,
   tagUpdateInput,
+  themePreferencesUpdateInput,
   type JsonValue,
   type UserResponse,
 } from "@loomark/shared";
@@ -38,6 +39,10 @@ import { getAuthProviderAvailability, getBetterAuth } from "./better-auth";
 import { config } from "./config";
 import { closeDatabase } from "./db";
 import { initializeDatabase } from "./database/initialize";
+import {
+  getUserPreferences,
+  updateUserPreferences,
+} from "./user-preferences";
 import { appRouter, type BackendContext } from "./router";
 import {
   clickBookmark,
@@ -198,6 +203,40 @@ async function handleRest(
       result.ok
         ? ({ user: result.value } as JsonValue)
         : { error: result.error.message, code: result.error.code },
+    );
+    return;
+  }
+
+  if (
+    (request.method === "GET" || request.method === "PATCH") &&
+    url.pathname === "/api/v1/preferences"
+  ) {
+    const sessionUser = await requireSessionUser(request, response);
+    if (!sessionUser) return;
+    if (request.method === "GET") {
+      sendJson(response, 200, await getUserPreferences(sessionUser.id));
+      return;
+    }
+    const bodyResult = await fromPromise(readBody(request), () => ({
+      code: "INVALID_JSON",
+      message: "Invalid JSON payload",
+    }));
+    if (!bodyResult.ok) {
+      sendJson(response, 400, { error: bodyResult.error.message });
+      return;
+    }
+    const parsed = themePreferencesUpdateInput.safeParse(bodyResult.value);
+    if (!parsed.success) {
+      sendJson(response, 400, {
+        error: "主题设置内容无效",
+        code: "INVALID_THEME_PREFERENCES",
+      });
+      return;
+    }
+    sendJson(
+      response,
+      200,
+      await updateUserPreferences(sessionUser.id, parsed.data),
     );
     return;
   }
