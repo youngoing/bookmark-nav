@@ -67,42 +67,46 @@
 /* Theme engine compatibility layer. Components consume semantic tokens while
    legacy selectors keep working during the migration. */
 :root {
-  --theme-bg: #f7f8fa;
+  --theme-bg: #f6f8fa;
   --theme-panel: #ffffff;
-  --theme-ink: #172033;
-  --theme-muted: #7d8799;
-  --theme-line: #e8ebf0;
-  --theme-accent: #536dfe;
-  --theme-accent-dark: #4058df;
+  --theme-ink: #1f2328;
+  --theme-muted: #6e7781;
+  --theme-line: #d8dee4;
+  --theme-accent: #0969da;
+  --theme-accent-dark: #0757b3;
   --theme-control-bg: #ffffff;
-  --theme-control-hover: #f1f3ff;
-  --theme-control-selected: #e7ebff;
-  --theme-control-selected-text: #4058df;
+  --theme-control-hover: #f3f4f6;
+  --theme-control-selected: #ddf4ff;
+  --theme-control-selected-text: #0969da;
   --theme-on-accent: #ffffff;
-  --theme-text-subtle: #687386;
-  --theme-text-faint: #a3acba;
-  --theme-icon-muted: #8b95a5;
-  --theme-input-border: #dfe4eb;
-  --theme-focus-ring: #536dfe14;
-  --theme-danger: #c94f5f;
-  --theme-danger-surface: #fff5f6;
-  --theme-success: #258361;
-  --theme-success-surface: #e9f9f1;
-  --theme-warning: #ee843c;
-  --theme-warning-surface: #fff1e7;
-  --theme-backdrop: #17203340;
-  --theme-table-header: #fafbfc;
-  --theme-favicon-bg: #f5f6f8;
-  --theme-upgrade-surface: #f8f5ff;
+  --theme-text-subtle: #57606a;
+  --theme-text-faint: #8c959f;
+  --theme-icon-muted: #6e7781;
+  --theme-input-border: #d0d7de;
+  --theme-focus-ring: #0969da33;
+  --theme-danger: #cf222e;
+  --theme-danger-surface: #ffebe9;
+  --theme-success: #1a7f37;
+  --theme-success-surface: #dafbe1;
+  --theme-warning: #9a6700;
+  --theme-warning-surface: #fff8c5;
+  --theme-backdrop: #1f232866;
+  --theme-table-header: #f6f8fa;
+  --theme-favicon-bg: #f6f8fa;
+  --theme-upgrade-surface: #f6f8fa;
   --theme-background-image: none;
   --theme-background-fallback: var(--theme-bg);
   --theme-background-position: center;
   --theme-background-size: cover;
   --theme-background-overlay: none;
-  --theme-skeleton: #edf0f4;
-  --theme-skeleton-shine: #f8f9fb;
+  --theme-sidebar-image: none;
+  --theme-sidebar-position: center;
+  --theme-sidebar-size: cover;
+  --theme-sidebar-overlay: none;
+  --theme-skeleton: #eaeef2;
+  --theme-skeleton-shine: #f6f8fa;
   --theme-radius: 8px;
-  --theme-card-shadow: 0 8px 25px #26334a0d;
+  --theme-card-shadow: 0 1px 2px #1f232814;
   --bg: var(--theme-bg);
   --panel: var(--theme-panel);
   --ink: var(--theme-ink);
@@ -992,5 +996,95 @@ body::after {
   .main::before,
   .main::after {
     animation: none;
+  }
+}
+
+/* Every browse surface gives the same whole-item affordance. Nested controls
+   remain independent interactive targets. */
+.bookmark-card:not(.skeleton-bookmark),
+.bookmark-list-row,
+.bookmark-browse-table tbody tr,
+.bookmark-circle-item a,
+.bookmark-compact-row a {
+  cursor: pointer;
+}
+
+.bookmark-card:not(.skeleton-bookmark):focus-visible,
+.bookmark-list-row:focus-visible,
+.bookmark-circle-item a:focus-visible,
+.bookmark-compact-row a:focus-visible,
+.bookmark-browse-table tbody tr:focus-visible {
+  outline: 2px solid var(--theme-accent);
+  outline-offset: 2px;
+}
+
+.bookmark-card:not(.skeleton-bookmark):focus-visible,
+.bookmark-list-row:focus-visible {
+  border-color: var(--theme-surface-card-hover-border);
+  box-shadow: var(--theme-surface-card-hover-shadow);
+  transform: var(--theme-surface-card-hover-transform);
+}
+
+.bookmark-circle-item a:is(:hover, :focus-visible) {
+  border-color: var(--theme-surface-card-hover-border);
+  box-shadow: var(--theme-surface-card-hover-shadow);
+  transform: var(--theme-surface-card-hover-transform);
+}
+
+.bookmark-compact-row a:is(:hover, :focus-visible) {
+  background: var(--theme-control-hover);
+  color: var(--theme-accent);
+}
+
+.bookmark-browse-table tbody tr {
+  transition: background .15s, color .15s;
+}
+
+.bookmark-browse-table tbody tr:is(:hover, :focus-visible) td {
+  background: color-mix(in srgb, var(--theme-accent) 7%, var(--theme-panel));
+}
+
+.sidebar,
+.management-sidebar {
+  background-color: var(--theme-panel);
+  background-image: var(--theme-sidebar-overlay), var(--theme-sidebar-image);
+  background-position: center, var(--theme-sidebar-position);
+  background-repeat: no-repeat;
+  background-size: cover, var(--theme-sidebar-size);
+}
+
+.content.has-fixed-pagination {
+  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+}
+
+.fixed-pagination {
+  position: fixed;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
+  left: 245px;
+  min-height: 64px;
+  margin: 0;
+  padding: 10px 40px calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--theme-surface-border-color);
+  background: color-mix(in srgb, var(--theme-panel) 92%, transparent);
+  box-shadow: 0 -8px 24px color-mix(in srgb, var(--theme-ink) 10%, transparent);
+  backdrop-filter: var(--theme-surface-backdrop-filter);
+}
+
+.shell.sidebar-is-collapsed .fixed-pagination {
+  left: 72px;
+}
+
+@media (max-width: 760px) {
+  .content.has-fixed-pagination {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+
+  .fixed-pagination,
+  .shell.sidebar-is-collapsed .fixed-pagination {
+    left: 0;
+    min-height: 56px;
+    padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
   }
 }
