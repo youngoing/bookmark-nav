@@ -2,8 +2,6 @@ const productionEnv = {
   NODE_ENV: "production",
   PORT: 3000,
   HOSTNAME: "0.0.0.0",
-  APP_URL: "https://youngoing.cn",
-  BACKEND_URL: "http://127.0.0.1:4001",
 };
 
 module.exports = {
@@ -12,6 +10,9 @@ module.exports = {
       name: "bookmark-nav-frontend",
       script: "./frontend/server.js",
       cwd: __dirname,
+      // Node 22 loads the deployment's frontend/.env before starting Next.
+      // Explicit environment variables supplied by PM2 still take precedence.
+      node_args: "--env-file=./frontend/.env",
       env: productionEnv,
       env_production: productionEnv,
       instances: 1,

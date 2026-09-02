@@ -112,6 +112,12 @@ stage_artifacts() {
     cp -R "$FRONTEND_DIR/public/." "$out_dir/frontend/public/"
   fi
 
+  # The standalone output does not include .env files. Node loads this file
+  # through frontend/ecosystem.config.cjs when PM2 starts the release.
+  if [ -f "$FRONTEND_DIR/.env" ]; then
+    cp "$FRONTEND_DIR/.env" "$out_dir/frontend/.env"
+  fi
+
   if [ ! -f "$out_dir/frontend/server.js" ]; then
     echo "ERROR: Standalone entrypoint not found at $out_dir/frontend/server.js." >&2
     echo "Check frontend/next.config.ts outputFileTracingRoot." >&2

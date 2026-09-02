@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { themePreferencesResponse, type JsonValue } from "@loomark/shared";
-import { DEFAULT_THEME_ID, getThemePreset, type ThemeId, type ThemeMode } from "./theme-config";
+import { DEFAULT_THEME_ID, getThemeCssVariables, getThemePreset, type ThemeId, type ThemeMode } from "./theme-config";
 
 export type { ThemeId, ThemeMode } from "./theme-config";
 type ThemeContextValue = {
@@ -62,15 +62,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const root = document.documentElement;
-    // Legacy dark selectors are disabled by keeping this compatibility marker light.
-    // Actual palette colors come exclusively from themeId tokens below.
     root.dataset.theme = "light";
-    root.style.colorScheme = mode === "system" ? "light dark" : mode;
-    window.localStorage.setItem(MODE_STORAGE_KEY, mode);
-  }, [mode]);
-
-  useEffect(() => {
-    const root = document.documentElement;
     const baseTheme = themeId === "default" || themeId === "midnight";
     const media = typeof window.matchMedia === "function"
       ? window.matchMedia("(prefers-color-scheme: dark)")
@@ -83,20 +75,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           : "default"
         : themeId;
       const currentTheme = getThemePreset(currentThemeId);
-      root.dataset.themeId = currentTheme.id;
-      const variables = Object.entries(currentTheme.tokens);
-      for (const [key, value] of variables) root.style.setProperty(`--theme-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`, value);
-      const backgroundImage = currentTheme.background?.image
-        ? `url("${currentTheme.background.image.replaceAll('"', "%22")}")`
-        : "none";
-      root.style.setProperty("--theme-background-image", backgroundImage);
-      root.style.setProperty("--theme-background-fallback", currentTheme.background?.fallback || "var(--theme-bg)");
-      root.style.setProperty("--theme-background-position", currentTheme.background?.position || "center");
-      root.style.setProperty("--theme-background-size", currentTheme.background?.size || "cover");
-      root.style.setProperty("--theme-background-overlay", currentTheme.background?.overlay || "none");
+      root.dataset.themePreset = currentTheme.id;
+      root.removeAttribute("data-theme-id");
+      root.style.colorScheme = currentTheme.mode;
+      for (const [name, value] of Object.entries(getThemeCssVariables(currentTheme))) {
+        root.style.setProperty(name, value);
+      }
     };
     applyTheme();
     window.localStorage.setItem(THEME_STORAGE_KEY, themeId);
+    window.localStorage.setItem(MODE_STORAGE_KEY, mode);
     if (mode !== "system" || !baseTheme || !media) return;
     media.addEventListener("change", applyTheme);
     return () => media.removeEventListener("change", applyTheme);
