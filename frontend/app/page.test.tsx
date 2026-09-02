@@ -27,6 +27,19 @@ function renderWorkspace(mode: WorkspaceMode = "display") {
 afterEach(() => { vi.unstubAllGlobals(); window.localStorage.clear(); });
 
 describe("书签工作台用户流程", () => {
+  it("会话验证失败时回退到登录页", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = requestUrl(input);
+      if (url.pathname === "/api/auth/session") return json({ error: "Unauthorized" }, 401);
+      if (url.pathname === "/api/auth/providers") return json({ google: false, feishu: false });
+      return json({ error: "Not found" }, 404);
+    }));
+    renderWorkspace();
+
+    expect(await screen.findByRole("heading", { name: "登录" })).toBeTruthy();
+    expect(screen.queryByText("正在恢复登录状态")).toBeNull();
+  });
+
   it("已登录用户可以切换三种展示方式并前后翻页", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
       const url = requestUrl(input);
@@ -46,8 +59,11 @@ describe("书签工作台用户流程", () => {
     expect(screen.queryByRole("button", { name: "添加书签" })).toBeNull();
     const search = screen.getByPlaceholderText("搜索书签...");
     await user.type(search, "alpha");
-    await user.click(screen.getByRole("button", { name: "最近添加" }));
-    expect((search as HTMLInputElement).value).toBe("");
+    const sort = screen.getByRole("combobox", { name: "书签排序" });
+    await user.selectOptions(sort, "clicks");
+    expect((sort as HTMLSelectElement).value).toBe("clicks");
+    expect((search as HTMLInputElement).value).toBe("alpha");
+    await user.clear(search);
     const collapse = screen.getByRole("button", { name: "收起导航" });
     await user.click(collapse);
     expect(screen.getByRole("button", { name: "展开导航" })).toBeTruthy();
@@ -115,7 +131,9 @@ describe("书签工作台用户流程", () => {
     expect(screen.getByText("Alpha 书签")).toBeTruthy();
     expect(screen.queryByText("Beta 书签")).toBeNull();
     expect(pageQueries).toHaveLength(0);
-    await user.click(screen.getByRole("button", { name: "清除筛选" }));
+    await user.click(screen.getByRole("button", { name: /^标签/ }));
+    await user.click(screen.getByRole("button", { name: /^全部标签/ }));
+    await user.click(screen.getByRole("button", { name: "应用筛选" }));
     expect(await screen.findByRole("heading", { name: "全部书签" })).toBeTruthy();
   });
 
