@@ -10,9 +10,9 @@ module.exports = {
       name: "bookmark-nav-frontend",
       script: "./frontend/server.js",
       cwd: __dirname,
-      // Node 22 loads the deployment's frontend/.env before starting Next.
+      // Node 22 loads the deployment's frontend/.env when it exists.
       // Explicit environment variables supplied by PM2 still take precedence.
-      node_args: "--env-file=./frontend/.env",
+      node_args: "--env-file-if-exists=./frontend/.env",
       env: productionEnv,
       env_production: productionEnv,
       instances: 1,
