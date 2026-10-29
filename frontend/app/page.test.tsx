@@ -127,7 +127,7 @@ describe("书签工作台用户流程", () => {
     await user.click(screen.getByRole("button", { name: /^标签/ }));
     await user.click(screen.getAllByRole("button", { name: /前端/ }).at(-1)!);
     await user.click(screen.getByRole("button", { name: "应用筛选" }));
-    expect(await screen.findByRole("heading", { name: "#前端" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /#前端/ })).toBeTruthy();
     expect(screen.getByText("Alpha 书签")).toBeTruthy();
     expect(screen.queryByText("Beta 书签")).toBeNull();
     expect(pageQueries).toHaveLength(0);
