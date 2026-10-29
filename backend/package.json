@@ -9,9 +9,11 @@
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "build": "node scripts/build.mjs",
+    "perf:baseline": "tsx scripts/perf-baseline.ts",
     "typecheck": "tsc --noEmit",
     "migrate:auth": "tsx scripts/migrate-auth.ts",
-    "migrate:auth:finalize": "tsx scripts/migrate-auth.ts --finalize"
+    "migrate:auth:finalize": "tsx scripts/migrate-auth.ts --finalize",
+    "migrate:favicons": "tsx scripts/migrate-favicons.ts"
   },
   "dependencies": {
     "@loomark/shared": "workspace:*",

@@ -1,5 +1,6 @@
 import type { Collection, Db, Document, IndexDescription } from "mongodb";
 import { z } from "zod";
+import { faviconSchema } from "@loomark/shared";
 import { getDatabase } from "../../db";
 
 export const publicationDocumentSchema = z
@@ -12,7 +13,7 @@ export const publicationDocumentSchema = z
     title: z.string(),
     description: z.string(),
     domain: z.string(),
-    favicon: z.string().url(),
+    favicon: faviconSchema,
     publishedAt: z.string(),
   })
   .strict();

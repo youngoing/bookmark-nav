@@ -35,6 +35,8 @@ export const BOOKMARKS_VALIDATOR: Document = {
 export const BOOKMARKS_INDEXES: readonly IndexDescription[] = [
   { key: { id: 1 }, name: "bookmarks_id_unique", unique: true },
   { key: { ownerId: 1, createdAt: -1 }, name: "bookmarks_owner_created_at" },
+  { key: { ownerId: 1, clicks: -1 }, name: "bookmarks_owner_clicks" },
+  { key: { ownerId: 1, title: 1 }, name: "bookmarks_owner_title" },
   { key: { ownerId: 1, folderId: 1 }, name: "bookmarks_owner_folder" },
   { key: { ownerId: 1, siteId: 1 }, name: "bookmarks_owner_site" },
   { key: { ownerId: 1, domain: 1 }, name: "bookmarks_owner_domain" },

@@ -67,7 +67,7 @@ export type ManagementError = {
   message: string;
 };
 
-const faviconCache = new Map<string, Promise<string>>();
+const MAX_FAVICON_RESPONSE_BYTES = 4096;
 
 function fallbackFavicon(hostname: string): string {
   const letter = (hostname.replace(/^www\./, "")[0] || "?").toUpperCase();
@@ -75,30 +75,25 @@ function fallbackFavicon(hostname: string): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
+function remoteFaviconUrl(hostname: string): string {
+  const faviconUrl = new URL("https://www.google.com/s2/favicons");
+  faviconUrl.searchParams.set("domain", hostname);
+  faviconUrl.searchParams.set("sz", "64");
+  return faviconUrl.toString();
+}
+
+function compactFavicon(favicon: string | undefined, hostname: string): string {
+  if (!hostname)
+    return favicon && Buffer.byteLength(favicon) <= MAX_FAVICON_RESPONSE_BYTES
+      ? favicon
+      : fallbackFavicon(hostname);
+  return !favicon || Buffer.byteLength(favicon) > MAX_FAVICON_RESPONSE_BYTES
+    ? remoteFaviconUrl(hostname)
+    : favicon;
+}
+
 async function resolveFavicon(url: URL): Promise<string> {
-  const key = url.hostname.toLowerCase();
-  const existing = faviconCache.get(key);
-  if (existing) return existing;
-  const pending = (async () => {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3500);
-      const response = await fetch(new URL("/favicon.ico", url.origin), {
-        headers: { "user-agent": "bookmark-nav favicon fetcher" },
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      const contentType = response.headers.get("content-type")?.split(";", 1)[0] || "";
-      if (!response.ok || !contentType.startsWith("image/") || Number(response.headers.get("content-length") || 0) > 262144) return fallbackFavicon(url.hostname);
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (!bytes.length || bytes.length > 262144) return fallbackFavicon(url.hostname);
-      return `data:${contentType};base64,${Buffer.from(bytes).toString("base64")}`;
-    } catch {
-      return fallbackFavicon(url.hostname);
-    }
-  })();
-  faviconCache.set(key, pending);
-  return pending;
+  return remoteFaviconUrl(url.hostname);
 }
 
 function withoutFolderMongoId(
@@ -115,7 +110,10 @@ function withoutTagMongoId(document: WithId<DbTag>): DbTag {
 
 function withoutSiteMongoId(document: WithId<DbSite>): DbSite {
   const { _id: _, ...value } = document;
-  return siteDocumentSchema.parse(value);
+  return siteDocumentSchema.parse({
+    ...value,
+    favicon: compactFavicon(value.favicon, value.domain),
+  });
 }
 
 function withoutSharedCollectionMongoId(
@@ -135,17 +133,45 @@ function publicSharedCollection(
     author: { id: document.ownerId, name: document.authorName },
     name: document.name,
     description: document.description,
-    items: document.items,
+    items: document.items.map((item) => ({
+      ...item,
+      favicon: compactFavicon(item.favicon, item.domain),
+    })),
     publishedAt: document.publishedAt,
     updatedAt: document.updatedAt,
   };
+}
+
+type BookmarkApiDocument = Omit<BookmarkResponse, "favicon"> & {
+  favicon?: string;
+};
+
+type SiteApiDocument = Omit<DbSite, "favicon"> & {
+  favicon?: string;
+};
+
+const bookmarkListProjection = { _id: 0, favicon: 0 } as const;
+const siteListProjection = { _id: 0, favicon: 0 } as const;
+
+function publicBookmark(document: BookmarkApiDocument): BookmarkResponse {
+  return bookmarkDocumentSchema.parse({
+    ...document,
+    favicon: compactFavicon(document.favicon, document.domain),
+  });
+}
+
+function publicSite(document: SiteApiDocument): DbSite {
+  return siteDocumentSchema.parse({
+    ...document,
+    favicon: compactFavicon(document.favicon, document.domain),
+  });
 }
 
 function withoutBookmarkMongoId(
   document: WithId<BookmarkResponse>,
 ): BookmarkResponse {
   const { _id: _, ...value } = document;
-  return bookmarkDocumentSchema.parse(value);
+  return publicBookmark(value);
 }
 
 function withoutPublicationMongoId(
@@ -164,7 +190,7 @@ function publicPublication(document: DbPublication): Publication {
     title: document.title,
     description: document.description,
     domain: document.domain,
-    favicon: document.favicon,
+    favicon: compactFavicon(document.favicon, document.domain),
     publishedAt: document.publishedAt,
   };
 }
@@ -194,9 +220,10 @@ export async function listBookmarks(
 ): Promise<BookmarkResponse[]> {
   const documents = await (await getBookmarksCollection())
     .find({ ownerId })
+    .project<BookmarkApiDocument>(bookmarkListProjection)
     .sort({ createdAt: -1 })
     .toArray();
-  return documents.map(withoutBookmarkMongoId);
+  return documents.map(publicBookmark);
 }
 
 export async function listBookmarksPage(
@@ -253,11 +280,12 @@ export async function listBookmarksPage(
   const items = (
     await bookmarks
       .find(filter)
+      .project<BookmarkApiDocument>(bookmarkListProjection)
       .sort(sort)
       .skip((page - 1) * options.pageSize)
       .limit(options.pageSize)
       .toArray()
-  ).map(withoutBookmarkMongoId);
+  ).map(publicBookmark);
   return { items, page, pageSize: options.pageSize, total, totalPages };
 }
 
@@ -275,17 +303,11 @@ export async function getDashboard(ownerId: string): Promise<DashboardData> {
         .toArray(),
       (await getSitesCollection())
         .find({ ownerId })
+        .project<SiteApiDocument>(siteListProjection)
         .sort({ name: 1 })
         .toArray(),
     ]);
-  const bookmarksCollection = await getBookmarksCollection();
-  const siteDocuments = await Promise.all(rawSiteDocuments.map(async (site) => {
-    if (!site.favicon.startsWith("https://www.google.com/s2/favicons")) return site;
-    const favicon = await resolveFavicon(new URL(site.homepageUrl));
-    await (await getSitesCollection()).updateOne({ id: site.id, ownerId }, { $set: { favicon } });
-    await bookmarksCollection.updateMany({ ownerId, siteId: site.id }, { $set: { favicon } });
-    return { ...site, favicon };
-  }));
+  const siteDocuments = rawSiteDocuments.map(publicSite);
   const cachedFaviconBySiteId = new Map(siteDocuments.map((site) => [site.id, site.favicon]));
   const bookmarks = rawBookmarks.map((bookmark) => ({ ...bookmark, favicon: cachedFaviconBySiteId.get(bookmark.siteId) || bookmark.favicon }));
   const siteById = new Map(siteDocuments.map((site) => [site.id, site]));
@@ -312,7 +334,7 @@ export async function getDashboard(ownerId: string): Promise<DashboardData> {
     };
   });
   const sites: Site[] = siteDocuments.map((document) => {
-    const site = withoutSiteMongoId(document);
+    const site = document;
     return {
       ...site,
       count: bookmarks.filter((bookmark) => bookmark.siteId === site.id).length,
@@ -558,7 +580,7 @@ export async function createSite(
     updatedAt: now,
   };
   await sites.insertOne(document);
-  return success({ ...document, count: 0 });
+  return success({ ...publicSite(document), count: 0 });
 }
 
 export async function updateSite(
@@ -584,7 +606,7 @@ export async function updateSite(
     name: input.name || current.name,
     homepageUrl,
     domain,
-    favicon: homepageUrl === current.homepageUrl ? current.favicon : await resolveFavicon(url),
+    favicon: homepageUrl === current.homepageUrl ? compactFavicon(current.favicon, current.domain) : await resolveFavicon(url),
     folderId: input.folderId === undefined ? current.folderId : input.folderId,
     tags: input.tags || current.tags,
     updatedAt,
@@ -593,13 +615,7 @@ export async function updateSite(
   const count = await (
     await getBookmarksCollection()
   ).countDocuments({ ownerId, siteId: id });
-  return success({
-    id,
-    ownerId,
-    ...updated,
-    createdAt: current.createdAt,
-    count,
-  });
+  return success({ ...publicSite({ ...updated, id, ownerId, createdAt: current.createdAt }), count });
 }
 
 export async function removeSite(
@@ -667,7 +683,7 @@ export async function createBookmark(
     title: input.title || url.hostname,
     description: input.description || "",
     domain,
-    favicon: site.favicon,
+    favicon: compactFavicon(site.favicon, domain),
     clicks: 0,
     isFavorite: false,
     publicationId: null,
@@ -675,7 +691,7 @@ export async function createBookmark(
     updatedAt: now,
   };
   await (await getBookmarksCollection()).insertOne(item);
-  return success(item);
+  return success(publicBookmark(item));
 }
 
 export async function batchWriteBookmarks(
@@ -744,9 +760,9 @@ export async function clickBookmark(
   const item = await bookmarks.findOneAndUpdate(
     { id, ownerId },
     { $inc: { clicks: 1 }, $set: { updatedAt: new Date().toISOString() } },
-    { returnDocument: "after" },
+    { returnDocument: "after", projection: bookmarkListProjection },
   );
-  return item ? withoutBookmarkMongoId(item) : undefined;
+  return item ? publicBookmark(item as BookmarkApiDocument) : undefined;
 }
 
 export async function updateBookmark(
@@ -771,10 +787,10 @@ export async function updateBookmark(
   const item = await bookmarks.findOneAndUpdate(
     { id, ownerId },
     { $set: { ...patch, updatedAt: new Date().toISOString() } },
-    { returnDocument: "after" },
+    { returnDocument: "after", projection: bookmarkListProjection },
   );
   return item
-    ? success(withoutBookmarkMongoId(item))
+    ? success(publicBookmark(item as BookmarkApiDocument))
     : failure({ code: "NOT_FOUND", message: "书签不存在" });
 }
 
@@ -799,12 +815,13 @@ export async function publishBookmark(
   id: string,
 ): Promise<Result<Publication, ManagementError>> {
   const bookmarks = await getBookmarksCollection();
-  const bookmark = await bookmarks.findOne({ id, ownerId });
+  const bookmark = await bookmarks.findOne({ id, ownerId }, { projection: bookmarkListProjection }) as BookmarkApiDocument | null;
   if (!bookmark) return failure({ code: "NOT_FOUND", message: "书签不存在" });
+  const publicSource = publicBookmark(bookmark);
   const publications = await getPublicationsCollection();
-  if (bookmark.publicationId) {
+  if (publicSource.publicationId) {
     const existing = await publications.findOne({
-      id: bookmark.publicationId,
+      id: publicSource.publicationId,
       ownerId,
     });
     if (existing)
@@ -812,14 +829,14 @@ export async function publishBookmark(
   }
   const document: DbPublication = {
     id: randomUUID(),
-    sourceBookmarkId: bookmark.id,
+    sourceBookmarkId: publicSource.id,
     ownerId,
     authorName,
-    url: bookmark.url,
-    title: bookmark.title,
-    description: bookmark.description,
-    domain: bookmark.domain,
-    favicon: bookmark.favicon,
+    url: publicSource.url,
+    title: publicSource.title,
+    description: publicSource.description,
+    domain: publicSource.domain,
+    favicon: publicSource.favicon,
     publishedAt: new Date().toISOString(),
   };
   await publications.insertOne(document);
@@ -900,6 +917,7 @@ export async function publishTagCollection(
       ownerId,
       $or: [{ tags: tagId }, { siteId: { $in: inheritedSiteIds } }],
     })
+    .project<BookmarkApiDocument>(bookmarkListProjection)
     .toArray();
   const eligibleById = new Map(
     eligible.map((bookmark) => [bookmark.id, bookmark]),
@@ -924,14 +942,15 @@ export async function publishTagCollection(
     description: input.description,
     items: selectedIds.map((id, sortOrder) => {
       const bookmark = eligibleById.get(id)!;
+      const publicSource = publicBookmark(bookmark);
       return {
         id: randomUUID(),
-        sourceBookmarkId: bookmark.id,
-        url: bookmark.url,
-        title: bookmark.title,
-        description: bookmark.description,
-        domain: bookmark.domain,
-        favicon: bookmark.favicon,
+        sourceBookmarkId: publicSource.id,
+        url: publicSource.url,
+        title: publicSource.title,
+        description: publicSource.description,
+        domain: publicSource.domain,
+        favicon: publicSource.favicon,
         sortOrder,
       };
     }),

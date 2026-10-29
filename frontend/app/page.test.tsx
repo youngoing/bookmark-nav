@@ -275,7 +275,7 @@ describe("书签工作台用户流程", () => {
     expect(await screen.findByRole("heading", { name: "管理配置" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /标签管理/ }));
     await user.click(screen.getByRole("button", { name: "编辑前端" }));
-    expect(screen.getByRole("heading", { name: "编辑标签" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "编辑标签" })).toBeTruthy();
     const nameInput = screen.getByLabelText("名称");
     await user.clear(nameInput);
     await user.type(nameInput, "界面开发");
@@ -323,7 +323,7 @@ describe("书签工作台用户流程", () => {
     expect(screen.getByRole("button", { name: "编辑Alpha 书签" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "删除Alpha 书签" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "编辑Alpha 书签" }));
-    expect(screen.getByRole("heading", { name: "编辑书签" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "编辑书签" })).toBeTruthy();
   });
 
   it("后台通用查询组件支持字段来源、OR/AND 与分页条件", async () => {
@@ -416,7 +416,7 @@ describe("书签工作台用户流程", () => {
     await user.click(screen.getByRole("button", { name: /网站管理/ }));
     expect(screen.getByRole("button", { name: "编辑Alpha" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "为Alpha添加子链接" }));
-    expect(screen.getByRole("heading", { name: "添加网站子链接" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "添加网站子链接" })).toBeTruthy();
     expect((screen.getByLabelText("所属网站") as HTMLSelectElement).value).toBe("site-alpha");
   });
 
@@ -436,6 +436,7 @@ describe("书签工作台用户流程", () => {
     await screen.findByText("Alpha 书签");
     await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
     await user.click(screen.getByRole("button", { name: "账号设置" }));
+    await screen.findByRole("heading", { name: "账号设置" });
     await user.click(screen.getByRole("tab", { name: "浏览器扩展" }));
     expect(screen.getByRole("link", { name: "下载扩展" }).getAttribute("href")).toBe("/downloads/bookmark-nav-extension.zip");
     await user.click(screen.getByRole("button", { name: "创建" }));
