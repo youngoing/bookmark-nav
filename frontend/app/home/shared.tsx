@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type React from "react";
 import { z } from "zod";
 import {
@@ -11,6 +11,8 @@ import {
   Briefcase,
   CalendarDays,
   Camera,
+  Check,
+  ChevronDown,
   Cloud,
   Code2,
   Database,
@@ -291,5 +293,24 @@ export function LoadingState() {
 }
 
 export function ThemeSwitcher({ mode, setMode, themeId, setThemeId }: { mode: ThemeMode; setMode: (mode: ThemeMode) => void; themeId: ThemeId; setThemeId: (themeId: ThemeId) => void }) {
-  return <div className="theme-switcher"><div><span className="field-label">主题</span><div className="theme-mode-row" role="group" aria-label="主题模式"><button type="button" className={mode === "system" ? "active" : ""} onClick={() => setMode("system")}>跟随系统</button><button type="button" className={mode === "light" ? "active" : ""} onClick={() => setMode("light")}>浅色</button><button type="button" className={mode === "dark" ? "active" : ""} onClick={() => setMode("dark")}>深色</button></div></div><div className="theme-grid">{THEME_PRESETS.map((preset) => <button type="button" key={preset.id} className={themeId === preset.id ? "active" : ""} onClick={() => setThemeId(preset.id)} title={preset.description}><span style={{ background: preset.preview }} />{preset.name}</button>)}</div></div>;
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const currentTheme = THEME_PRESETS.find((preset) => preset.id === themeId) || THEME_PRESETS[0];
+  const modeLabel: Record<ThemeMode, string> = { system: "跟随系统", light: "浅色", dark: "深色" };
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+  return <div className="theme-switcher" ref={rootRef}><button type="button" className="theme-trigger" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((current) => !current)}><Palette size={15} /><span><strong>{currentTheme.name}</strong><small>{modeLabel[mode]}</small></span><ChevronDown size={14} /></button>{open && <div className="theme-dropdown" role="menu" aria-label="主题选择"><div className="theme-dropdown-section"><span className="field-label">模式</span><div className="theme-mode-row" role="group" aria-label="主题模式"><button type="button" className={mode === "system" ? "active" : ""} onClick={() => setMode("system")}>跟随系统</button><button type="button" className={mode === "light" ? "active" : ""} onClick={() => setMode("light")}>浅色</button><button type="button" className={mode === "dark" ? "active" : ""} onClick={() => setMode("dark")}>深色</button></div></div><div className="theme-dropdown-section"><span className="field-label">主题</span><div className="theme-grid">{THEME_PRESETS.map((preset) => <button type="button" key={preset.id} className={themeId === preset.id ? "active" : ""} onClick={() => { setThemeId(preset.id); setOpen(false); }} title={preset.description} role="menuitemradio" aria-checked={themeId === preset.id}><span style={{ background: preset.preview }} />{preset.name}{themeId === preset.id && <Check size={13} />}</button>)}</div></div></div>}</div>;
 }
